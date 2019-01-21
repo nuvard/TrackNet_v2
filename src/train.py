@@ -7,6 +7,7 @@ from tracknet import build_tracknet_model
 from losses import tracknet_loss
 from metrics import circle_area
 from metrics import point_in_ellipse
+from metrics import MetricsCallback
 # other
 from keras.optimizers import Adam
 import logging
@@ -43,13 +44,15 @@ def main(data_dir, batch_size=32, n_gpus=0, random_seed=None):
         optimizer=Adam(clipnorm=1.),
         metrics=[point_in_ellipse, circle_area])
     # train the network
+    metrics_cb = MetricsCallback(test_data=x_test)
     logging.info("Training...")
     history = tracknet.fit_generator(
         generator=train_gen,
         steps_per_epoch=len(x_train) // batch_size,
         epochs=50,
         validation_data=validation,
-        validation_steps=1)
+        validation_steps=1,
+        callbacks=[metrics_cb])
 
 
 
