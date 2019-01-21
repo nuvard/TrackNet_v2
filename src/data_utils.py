@@ -18,7 +18,10 @@ def read_data(dirpath):
     x_test = np.load(os.path.join(dirpath, "X_test.npy"))
     y_train = np.load(os.path.join(dirpath, "y_train.npy"))
     y_test = np.load(os.path.join(dirpath, "y_test.npy"))
-    return (x_train, y_train), (x_test, y_test)
+    # extract only true tracks
+    x_train = x_train[y_train==1]
+    x_test = x_test[y_test==1]
+    return (x_train, x_test)
 
 
 def shuffle_arrays(*args, random_seed=None):
