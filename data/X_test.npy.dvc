@@ -1,0 +1,5 @@
+md5: b7a93099be2e06b2414cd1ee19c4534f
+outs:
+- cache: true
+  md5: 6fe8f2657261ba89c072e0523e8d00ca
+  path: X_test.npy
