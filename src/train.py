@@ -5,6 +5,8 @@ from data_utils import read_data
 # tracknet utils
 from tracknet import build_tracknet_model
 from losses import tracknet_loss
+from metrics import circle_area
+from metrics import point_in_ellipse
 # other
 from keras.optimizers import Adam
 import logging
@@ -20,7 +22,7 @@ data_dir=("Path to the directory containing files with data for training and tes
 batch_size=("The size of the batch", "option", None, int),
 n_gpus=("Number of GPU cores for training and testing", "option", None, int),
 random_seed=("Seed for the random generator", "option", None, int))
-def main(data_dir, batch_size=128, n_gpus=0, random_seed=None):
+def main(data_dir, batch_size=32, n_gpus=0, random_seed=None):
     logging.info("Read data")
     x_train, x_test = read_data(data_dir)
     logging.info("Train size: %d" % len(x_train))
@@ -38,7 +40,8 @@ def main(data_dir, batch_size=128, n_gpus=0, random_seed=None):
     logging.info(tracknet.summary())
     tracknet.compile(
         loss=tracknet_loss(),
-        optimizer=Adam(clipnorm=1.))
+        optimizer=Adam(clipnorm=1.),
+        metrics=[point_in_ellipse, circle_area])
     # train the network
     logging.info("Training...")
     history = tracknet.fit_generator(
