@@ -49,10 +49,12 @@ def main(data_dir, batch_size=32, n_gpus=0, random_seed=None):
     history = tracknet.fit_generator(
         generator=train_gen,
         steps_per_epoch=len(x_train) // batch_size,
-        epochs=50,
+        epochs=1,
         validation_data=validation,
         validation_steps=1,
         callbacks=[metrics_cb])
+    logging.info("Save model's weights")
+    tracknet.save_weights('data/tracknet_weights.h5')
 
 
 
