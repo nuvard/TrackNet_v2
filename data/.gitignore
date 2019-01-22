@@ -2,3 +2,4 @@
 /X_train.npy
 /y_train.npy
 /y_test.npy
+/tracknet_weights.h5

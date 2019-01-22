@@ -49,7 +49,7 @@ def main(data_dir, batch_size=32, n_gpus=0, random_seed=None):
     history = tracknet.fit_generator(
         generator=train_gen,
         steps_per_epoch=len(x_train) // batch_size,
-        epochs=1,
+        epochs=50,
         validation_data=validation,
         validation_steps=1,
         callbacks=[metrics_cb])
