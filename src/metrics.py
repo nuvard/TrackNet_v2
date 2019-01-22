@@ -3,6 +3,8 @@ from data_utils import get_part
 import tensorflow as tf
 import numpy as np
 import math
+import time
+
 
 def circle_area(y_true, y_pred):
     def area(R1, R2):
@@ -64,6 +66,7 @@ class MetricsCallback(Callback):
         self.hits_efficiency = []
 
     def on_epoch_end(self, epoch, logs={}):
+        start_time = time.time()
         efficiency = 0
         hits_efficiency = 0
         x_val = self.x_test.copy()
@@ -72,7 +75,7 @@ class MetricsCallback(Callback):
             # cut off all track-candidates
             x_part, target = get_part(x_val, i)
             # get model's prediction
-            preds = self.model.predict(x_part)
+            preds = self.model.predict(x_part, batch_size=512)
             # get indices of the tracks, which continuation was found
             idx = point_in_ellipse_numpy(target, preds)
             # count number of right predictions
@@ -86,5 +89,10 @@ class MetricsCallback(Callback):
         # add metrics to the list
         self.hits_efficiency.append(hits_efficiency)
         self.efficiency.append(efficiency)
+        # time in seconds
+        end_time = time.time() - start_time
+        # processing speed
+        proc_speed = len(self.x_test) / end_time
         # print metrics
-        print('Efficiency: %.4f - Hits efficiency: %.4f' % (efficiency, hits_efficiency))
+        print('Efficiency: %.4f - Hits efficiency: %.4f - Processing speed: %.2f tracks/sec' % 
+            (efficiency, hits_efficiency, proc_speed))
