@@ -1,5 +1,5 @@
 from keras.callbacks import Callback
-from data_utils import get_part
+from .data_utils import get_part
 import tensorflow as tf
 import numpy as np
 import math

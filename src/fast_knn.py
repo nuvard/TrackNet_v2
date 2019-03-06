@@ -27,12 +27,23 @@ def knn(x_train, x_test, n_neighbours=1, return_similarities=False):
 
 
 def top_k(inputs, k=1):
-    '''
+    '''Finds top elements for along the last dimension
+    of the inputs (along each row for matrices)
+
     # Arguments
-        input: 1-D or higher array with last dimension at least k
-        k: int, number of top elements to look for along the last dimension 
-                (along each row for matrices).
+        input: 1-D or 2-D array with last dimension at least k
+        k: int, number of elements to extract
+
+    # Returns
+        values, indices
     '''
+    assert len(inputs.shape) < 3, "Input must have at least 2 dimensions"
+    assert k >= 1, "Got k=%d, the value greater than 0 is required" % k
+    assert type(k) == int, "The type of k is %s, int is required" % str(type(k))
+
+    if len(inputs.shape) == 1:
+        # if vector -> to matrix
+        inputs = np.expand_dims(inputs, 0)
     # need for indexing
     i = np.arange(len(inputs))[:, np.newaxis]
     # sort in descending order
