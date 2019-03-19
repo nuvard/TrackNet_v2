@@ -194,8 +194,8 @@ def main(datapath):
         save_fname = os.path.join(datapath, save_fname)
         # save to the same location with different name
         print("Save data into `%s`" % save_fname)
-        print("--- OK ---\n")
         df.to_csv(save_fname, encoding='utf-8', index=None, sep='\t')
+        print("--- OK ---\n")
 
 
 if __name__ == "__main__":
