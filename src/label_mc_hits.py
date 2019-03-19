@@ -1,13 +1,31 @@
 import pandas as pd
 import numpy as np
+import warnings
 import plac
 import time
+import os
 
-from collections import Counter
+from glob import glob
 from tqdm import tqdm
+
+from timing import timeit
+
+warnings.simplefilter(action='ignore', category=FutureWarning)
 tqdm.pandas()
 
-from fast_knn import knn
+
+def euclidean(x, y):
+    '''Compute the euclidean distance 
+    between two vectors or 2d arrays
+    '''
+    return np.sum(np.square(x-y), axis=-1)
+
+
+def brute_force_1nn(x, y):
+    '''K-nearest neighbors algorithm for k=1
+    using brute-force
+    '''
+    return [np.argmin(euclidean(x, y_)) for y_ in y]
 
 
 def match_hits_to_mc_points(event_id, 
@@ -31,9 +49,8 @@ def match_hits_to_mc_points(event_id,
         array with shape=(N, 5), where columns are:
         event_id, x, y, z, track_id
     '''
-    # Faster than KD-Tree for very large matrices
-    # reshape, because method returns matrix
-    ii = knn(event_hits, event_mc_points).reshape(-1)
+    # Faster than KD-Tree and avoids dynamic allocations
+    ii = brute_force_1nn(event_hits, event_mc_points)
     # indices of hits without track_id
     ii_ = set(range(len(event_hits))) - set(ii)
     ii_ = list(ii_)
@@ -50,61 +67,135 @@ def match_hits_to_mc_points(event_id,
     return result_array
 
 
-@plac.annotations(
-    mc_points_file_path=("Path to the .root file with Monte-Carlo points", "positional", None, str),
-    hits_file_path=("Path to the .root file with reconstructed hits", "positional", None, str))
-def main(mc_points_file_path, hits_file_path):
-    start_time = time.time()
-    print("1. Reading data...")
-    mc_df = pd.read_csv(mc_points_file_path, encoding='utf-8')
-    hits_df = pd.read_csv(hits_file_path, encoding='utf-8')
-    print("Complete in %.2fs\n" % (time.time() - start_time))
+@timeit
+def read_mc_file(mc_fpath, sep='\t', index_col=None, encoding='utf-8'):
+    '''Reads file 'mc_fpath'
+    
+    # Return
+        pandas.DataFrame{event, track, x, y, z, station}
+    '''
+    usecols = ['event', 'track', 'x_in', 'y_in', 'z_in', 'station']
+    dtypes = [np.int32, np.int32, np.float32, np.float32, np.float32, np.int32]
+    # read dataframe
+    df = pd.read_csv(mc_fpath, sep=sep, encoding=encoding, index_col=index_col, 
+                     usecols=usecols, dtype=dict(zip(usecols, dtypes)))
+    # rename columns
+    df = df.rename(columns={'x_in': 'x', 'y_in': 'y', 'z_in': 'z'})
+    return df
 
-    # clean data from small tracks
-    step_start_time = time.time()
-    print("2. Removing tracks containing less than 3 points...")
-    mc_df = mc_df.groupby(['event_id', 'track_id']).filter(lambda x: len(x) > 2)
-    # after cleaning some event may be fully removed, so remove also in hits_df
-    # {1347, 3155, 3799, 8025, 8350, 8889, 8956}
-    removed_events = set(hits_df.event_id) - set(mc_df.event_id)
-    hits_df = hits_df[~hits_df.event_id.isin(removed_events)]
-    print("Complete in %.2fs\n" % (time.time() - step_start_time))
 
-    # build
-    step_start_time = time.time()
-    print("3. Matching hits to mc_points...")
+@timeit
+def read_hits_file(hits_fpath, sep='\t', index_col=0, encoding='utf-8'):
+    '''Reads file 'mc_fpath'
+    
+    # Return
+        pandas.DataFrame{event, x, y, z, station}
+    '''
+    return pd.read_csv(hits_fpath, 
+                       sep=sep, 
+                       encoding=encoding, 
+                       index_col=index_col, 
+                       dtype={'event': np.int32, 
+                              'x': np.float32, 
+                              'y': np.float32, 
+                              'z': np.float32, 
+                              'station': np.int32})
+
+
+@timeit
+def drop_short_tracks(mc_df, hits_df, n_points=3):
+    gp_size = mc_df.groupby(['event', 'track']).size()
+    # extract groups with size more than 2
+    gp = gp_size[gp_size >= n_points]
+    # create multiindex
+    mc_df = mc_df.set_index(['event', 'track'])
+    # mask dataframe
+    mc_df = mc_df.loc[gp.index].reset_index()
+    # after cleaning some events may be fully removed, 
+    # so remove also in hits_df
+    removed_events = set(hits_df.event) - set(mc_df.event)
+    hits_df = hits_df[~hits_df.event.isin(removed_events)]
+    return mc_df, hits_df
+    
+
+@timeit
+def drop_spinning_tracks(mc_df, n_points=1):
+    gp_size = mc_df.groupby(['event', 'track']).station.value_counts()
+    # extract only tracks with one point per station
+    gp = gp_size[gp_size == n_points]
+    # create multiindex
+    mc_df = mc_df.set_index(['event', 'track'])
+    # mask dataframe
+    idx = gp.index.droplevel('station').unique()
+    return mc_df.loc[idx].reset_index()
+
+
+@timeit
+def label_hits(mc_df, hits_df):
     hits_with_track_id = []
-    i = 0
-    for event_id, event_data in tqdm(hits_df.groupby('event_id')):
+
+    for event_id, event_data in tqdm(hits_df.groupby('event')):
         # extract event_mc_points
-        event_mc_points = mc_df[mc_df.event_id==event_id]
+        event_mc_points = mc_df[mc_df.event==event_id]
         # event 663 - 9K hits
         hits_with_track_id.extend(
             match_hits_to_mc_points(
                 event_id,
                 event_data[['x', 'y', 'z']].values,              
-                event_mc_points[['x_in', 'y_in', 'z_in']].values,
-                event_mc_points.track_id.values))
-        i += 1
-    # remove from memory existing dataframes
-    del hits_df, mc_df
-    # create new dataframe
-    hits_with_track_id_df = pd.DataFrame(
-        data=hits_with_track_id,
-        columns=['event_id', 'x', 'y', 'z', 'track_id'])
+                event_mc_points[['x', 'y', 'z']].values,
+                event_mc_points.track.values))
+
+    # create dataframe
+    hits_with_track_id_df = pd.DataFrame(hits_with_track_id,
+        columns=['event', 'x', 'y', 'z', 'track'])
+
+    # data types conversion
     hits_with_track_id_df = hits_with_track_id_df.astype({
-        'event_id': np.int32,
+        'event': np.int32,
         'x': np.float32,
         'y': np.float32,
         'z': np.float32,
-        'track_id': np.int32})
-    print("Complete in %.2fs\n" % (time.time() - step_start_time))
+        'track': np.int32})
 
-    # save df to file
-    print("Saving data...")
-    hits_with_track_id_df.to_csv('data/10K_hits.csv', encoding='utf-8', index=None)
-    end_time = time.time()
-    print("Elapsed: %.2f" % (end_time-start_time))
+    return hits_with_track_id_df
+
+
+@timeit
+def merge_mc_with_hits(mc_fpath, hits_fpath):
+    print("1. Read data...")
+    mc_df = read_mc_file(mc_fpath)
+    hits_df = read_hits_file(hits_fpath)
+
+    print("2. Remove tracks containing less than 3 points...")
+    mc_df, hits_df = drop_short_tracks(mc_df, hits_df)
+
+    print("3. Drop spinning tracks...")
+    mc_df = drop_spinning_tracks(mc_df)
+
+    print("4. Set labels to hits")
+    hits_with_track_id_df = label_hits(mc_df, hits_df)
+    
+    return hits_with_track_id_df
+
+
+@timeit
+@plac.annotations(
+    datapath=("Path to the directory with root files", "positional", None, str))
+def main(datapath):
+    mc_files = sorted(glob(os.path.join(datapath, 'evetest*')))
+    hits_files = sorted(glob(os.path.join(datapath, 'bmndst*')))
+
+    for mc_fpath, hits_fpath in zip(mc_files, hits_files):
+        print("Files:\n\t%s\n\t%s" % (mc_fpath, hits_fpath))
+        df = merge_mc_with_hits(mc_fpath, hits_fpath)
+        # create name of the file to save
+        save_fname = os.path.split(mc_fpath)[1]
+        save_fname = save_fname.split("evetest_")[1]
+        save_fname = os.path.join(datapath, save_fname)
+        # save to the same location with different name
+        print("Save data into `%s`" % save_fname)
+        print("--- OK ---\n")
+        df.to_csv(save_fname, encoding='utf-8', index=None, sep='\t')
 
 
 if __name__ == "__main__":
