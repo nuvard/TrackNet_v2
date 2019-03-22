@@ -4,3 +4,4 @@ from . import data_utils
 from . import losses
 from . import metrics
 from . import tracknet
+from . import timing

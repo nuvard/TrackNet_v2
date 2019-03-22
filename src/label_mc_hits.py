@@ -8,7 +8,7 @@ import os
 from glob import glob
 from tqdm import tqdm
 
-from timing import timeit
+from .timing import timeit
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 tqdm.pandas()
@@ -25,13 +25,13 @@ def brute_force_1nn(x, y):
     '''K-nearest neighbors algorithm for k=1
     using brute-force
     '''
+    # TODO: return distance
     return [np.argmin(euclidean(x, y_)) for y_ in y]
 
 
 def match_hits_to_mc_points(event_id, 
-                            event_hits, 
-                            event_mc_points, 
-                            mc_track_ids):
+                            event_data, 
+                            event_mc):
     '''For each hit finds the most closest Monte-Carlo
     point and assigns to it's track_id to this hit.
     
@@ -50,20 +50,24 @@ def match_hits_to_mc_points(event_id,
         event_id, x, y, z, track_id
     '''
     # Faster than KD-Tree and avoids dynamic allocations
+    usecols = ['x', 'y', 'z']
+    event_hits = event_data[usecols].values
+    event_mc_points = event_mc[usecols].values
+
     ii = brute_force_1nn(event_hits, event_mc_points)
     # indices of hits without track_id
     ii_ = set(range(len(event_hits))) - set(ii)
     ii_ = list(ii_)
-    # event_id, x, y, z, track_id
+    # event_id, x, y, z, station, track_id
     # track_id = -1, if fake hit
-    result_array = np.full((len(ii)+len(ii_), 5), -1, dtype=np.float32)
+    result_array = np.full((len(ii)+len(ii_), 6), -1, dtype=np.float32)
     # add event_id
     result_array[:, 0] = event_id
     # get hits with track_ids
-    result_array[:len(ii), 1:4] = event_hits[ii].copy()
-    result_array[:len(ii), -1] = mc_track_ids.copy()
+    result_array[:len(ii), 1:5] = event_data[usecols+['station']].values[ii]
+    result_array[:len(ii), -1] = event_mc.track
     # get the remaining hits
-    result_array[len(ii):, 1:4] = event_hits[ii_].copy()
+    result_array[len(ii):, 1:5] = event_data[usecols+['station']].values[ii_]
     return result_array
 
 
@@ -122,16 +126,18 @@ def drop_short_tracks(mc_df, hits_df, n_points=3):
 def drop_spinning_tracks(mc_df, n_points=1):
     gp_size = mc_df.groupby(['event', 'track']).station.value_counts()
     # extract only tracks with one point per station
-    gp = gp_size[gp_size == n_points]
+    gp = gp_size[gp_size > n_points]
     # create multiindex
     mc_df = mc_df.set_index(['event', 'track'])
     # mask dataframe
     idx = gp.index.droplevel('station').unique()
-    return mc_df.loc[idx].reset_index()
+    mask = mc_df.index.isin(idx)
+    return mc_df[~mask].reset_index()
 
 
 @timeit
 def label_hits(mc_df, hits_df):
+    # TODO: add station to the file
     hits_with_track_id = []
 
     for event_id, event_data in tqdm(hits_df.groupby('event')):
@@ -139,15 +145,13 @@ def label_hits(mc_df, hits_df):
         event_mc_points = mc_df[mc_df.event==event_id]
         # event 663 - 9K hits
         hits_with_track_id.extend(
-            match_hits_to_mc_points(
-                event_id,
-                event_data[['x', 'y', 'z']].values,              
-                event_mc_points[['x', 'y', 'z']].values,
-                event_mc_points.track.values))
+            match_hits_to_mc_points(event_id,
+                                    event_data, 
+                                    event_mc_points))
 
     # create dataframe
     hits_with_track_id_df = pd.DataFrame(hits_with_track_id,
-        columns=['event', 'x', 'y', 'z', 'track'])
+        columns=['event', 'x', 'y', 'z', 'station', 'track'])
 
     # data types conversion
     hits_with_track_id_df = hits_with_track_id_df.astype({
@@ -155,6 +159,7 @@ def label_hits(mc_df, hits_df):
         'x': np.float32,
         'y': np.float32,
         'z': np.float32,
+        'station': np.int32,
         'track': np.int32})
 
     return hits_with_track_id_df
