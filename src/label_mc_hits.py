@@ -21,17 +21,28 @@ def euclidean(x, y):
     return np.sum(np.square(x-y), axis=-1)
 
 
-def brute_force_1nn(x, y):
+def brute_force_1nn(x, y, return_distance=False):
     '''K-nearest neighbors algorithm for k=1
     using brute-force
     '''
-    # TODO: return distance
-    return [np.argmin(euclidean(x, y_)) for y_ in y]
+    distances = [None]*len(y)
+    indices = [None]*len(y)
+    for i, y_ in enumerate(y):
+        dist = euclidean(x, y_)
+        # add the smallest distance
+        indices[i] = np.argmin(dist)
+        distances[i] = dist[indices[i]]
+
+    if return_distance:
+        return indices, distances
+    # else return only indices
+    return indices
 
 
 def match_hits_to_mc_points(event_id, 
                             event_data, 
-                            event_mc):
+                            event_mc,
+                            verbose=False):
     '''For each hit finds the most closest Monte-Carlo
     point and assigns to it's track_id to this hit.
     
@@ -41,9 +52,8 @@ def match_hits_to_mc_points(event_id,
 
     # Arguments
         event_id: int, identifier of the event
-        event_hits: ndarray, dtype=float, event's hits
-        event_mc_points: Monte-Carlo points
-        mc_track_ids: track identifiers
+        event_data: pd.DataFrame, hits
+        event_mc: pd.DataFrame, Monte-Carlo points
 
     # Returns
         array with shape=(N, 5), where columns are:
@@ -54,7 +64,15 @@ def match_hits_to_mc_points(event_id,
     event_hits = event_data[usecols].values
     event_mc_points = event_mc[usecols].values
 
-    ii = brute_force_1nn(event_hits, event_mc_points)
+    # TODO: drop events, where distance is too high
+    ii, dist = brute_force_1nn(event_hits, event_mc_points, return_distance=True)
+
+    if np.max(dist) > 1:
+        if verbose:
+            print('\nEvent id: %d, max distance: %.2f' % (event_id, np.max(dist)))
+            print('Drop this event')
+        raise ValueError
+
     # indices of hits without track_id
     ii_ = set(range(len(event_hits))) - set(ii)
     ii_ = list(ii_)
@@ -125,7 +143,7 @@ def drop_short_tracks(mc_df, hits_df, n_points=3):
 @timeit
 def drop_spinning_tracks(mc_df, n_points=1):
     gp_size = mc_df.groupby(['event', 'track']).station.value_counts()
-    # extract only tracks with one point per station
+    # exclude tracks with more than n_points per station
     gp = gp_size[gp_size > n_points]
     # create multiindex
     mc_df = mc_df.set_index(['event', 'track'])
@@ -136,6 +154,19 @@ def drop_spinning_tracks(mc_df, n_points=1):
 
 
 @timeit
+def drop_events_by_hits_number(mc_df, hits_df, n_hits=10):
+    gp_size = hits_df.groupby(['event', 'station']).size()
+    # exclude events with more than n_hits per station 
+    gp = gp_size[gp_size > n_hits]
+    event_ids = gp.index.get_level_values('event')
+    # exclude selected events
+    mc_df = mc_df[~mc_df.event.isin(event_ids)]
+    hits_df = hits_df[~hits_df.event.isin(event_ids)]
+    return mc_df, hits_df
+
+
+
+@timeit
 def label_hits(mc_df, hits_df):
     # TODO: add station to the file
     hits_with_track_id = []
@@ -143,11 +174,15 @@ def label_hits(mc_df, hits_df):
     for event_id, event_data in tqdm(hits_df.groupby('event')):
         # extract event_mc_points
         event_mc_points = mc_df[mc_df.event==event_id]
-        # event 663 - 9K hits
-        hits_with_track_id.extend(
-            match_hits_to_mc_points(event_id,
-                                    event_data, 
-                                    event_mc_points))
+
+        try:
+            # match points to hits
+            matched = match_hits_to_mc_points(
+                event_id, event_data, event_mc_points)
+        except ValueError:
+            continue
+
+        hits_with_track_id.extend(matched)
 
     # create dataframe
     hits_with_track_id_df = pd.DataFrame(hits_with_track_id,
@@ -170,15 +205,22 @@ def merge_mc_with_hits(mc_fpath, hits_fpath):
     print("1. Read data...")
     mc_df = read_mc_file(mc_fpath)
     hits_df = read_hits_file(hits_fpath)
+    print("Event number: %d" % hits_df.event.nunique())
 
-    print("2. Remove tracks containing less than 3 points...")
+    #print("2. Remove events with anomalous number of hits")
+    #mc_df, hits_df = drop_events_by_hits_number(mc_df, hits_df)
+
+    print("2. Remove tracks containing less than 3 points")
     mc_df, hits_df = drop_short_tracks(mc_df, hits_df)
+    print("Event number: %d" % hits_df.event.nunique())
 
-    print("3. Drop spinning tracks...")
+    print("3. Drop spinning tracks")
     mc_df = drop_spinning_tracks(mc_df)
+    print("Event number: %d" % hits_df.event.nunique())
 
     print("4. Set labels to hits")
     hits_with_track_id_df = label_hits(mc_df, hits_df)
+    print("Event number: %d" % hits_with_track_id_df.event.nunique())
     
     return hits_with_track_id_df
 
