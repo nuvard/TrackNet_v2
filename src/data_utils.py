@@ -1,27 +1,104 @@
+import pandas as pd
 import numpy as np
+import json
 import os
 
-def read_data(dirpath):
+from glob import glob
+from tqdm import tqdm
+tqdm.pandas()
+
+from timing import timeit
+
+
+def read_vertex_file(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def sample_vertices(vertex_stats, n, random_seed=None):
+    rs = np.random.RandomState(seed=random_seed)
+    # sample vertex X coordinate
+    vertex_x = rs.normal(
+        loc=vertex_stats['x']['mean'], 
+        scale=vertex_stats['x']['std'],
+        size=(n, 1))
+    # sample vertex Y coordinate
+    vertex_y = rs.normal(
+        loc=vertex_stats['y']['mean'], 
+        scale=vertex_stats['y']['std'],
+        size=(n, 1))
+    # sample vertex Z coordinate
+    vertex_z = rs.uniform(
+        low=vertex_stats['z']['left'],
+        high=vertex_stats['z']['right'],
+        size=(n, 1))
+    # return stacked coordinates
+    return np.hstack([vertex_x, vertex_y, vertex_z])
+
+
+def get_tracks_with_vertex(df, vertex_stats, random_seed=13):
+    # extract tracks groups
+    groupby = df.groupby(['event', 'track'])
+    # sample vertex data
+    vertex = sample_vertices(vertex_stats, groupby.ngroups, random_seed)
+    # create result array
+    n_stations = groupby.size().max()
+    # vertex + n_stations 3D hits
+    res = np.zeros((groupby.ngroups, n_stations+1, 3))
+    # fill with vertex data
+    res[:, 0] = vertex
+    # get tracks
+    tracks = groupby[['x', 'y', 'z']].progress_apply(pd.Series.tolist)
+    # fill result array
+    for i, track in enumerate(tqdm(tracks)):
+        res[i, 1:len(track)+1] = np.asarray(track)
+    
+    return res
+    
+
+@timeit
+def read_train_dataset(dirpath, seed_for_vertex_gen=13):
     '''Reads data from directory. Directory must have 
     the following structure:
 
         dir
-        |__ X_train.npy
-        |__ X_test.npy
-        |__ y_train.npy
-        |__ y_test.npy
+        |__file1.tsv
+        |__file2.tsv
+        |...
+        |__fileN.tsv
 
-    where .npy files contains track-candidates (X-files)
-    or corresponding labels (y-files)
+    where .tsv files contains events hits
+    or with corresponding track labels
     '''
-    x_train = np.load(os.path.join(dirpath, "X_train.npy"))
-    x_test = np.load(os.path.join(dirpath, "X_test.npy"))
-    y_train = np.load(os.path.join(dirpath, "y_train.npy"))
-    y_test = np.load(os.path.join(dirpath, "y_test.npy"))
-    # extract only true tracks
-    x_train = x_train[y_train==1]
-    x_test = x_test[y_test==1]
-    return (x_train, x_test)
+    # collect files
+    train_files = glob(os.path.join(dirpath, '*.tsv'))
+    vertex_file = os.path.join(dirpath, "vertex.json")
+
+    # get vertex statistics
+    vertex_stats = read_vertex_file(vertex_file)
+
+    # get train data
+    length = [None]*len(train_files)
+    train = [None]*len(train_files)
+    for i, f in enumerate(train_files):
+        print("Processing `%s` file..." % f)
+        df = pd.read_csv(f, encoding='utf-8', sep='\t')
+        # extract only true tracks
+        df = df[df.track != -1]
+        # get true tracks array (N, 7, 3)
+        train[i] = get_tracks_with_vertex(df, vertex_stats)
+        length[i] = len(train[i])
+
+    # create result array
+    N = sum(length)
+    # empty is faster than zeros
+    train_arr = np.empty((N, *train[0].shape[1:]), dtype=np.float32)
+
+    # record all to train_arr
+    while train:
+        train_arr[:length.pop()] = train.pop()
+
+    return train_arr
 
 
 def shuffle_arrays(*args, random_seed=None):
