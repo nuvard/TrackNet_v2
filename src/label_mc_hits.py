@@ -8,7 +8,7 @@ import os
 from glob import glob
 from tqdm import tqdm
 
-from timing import timeit
+from .timing import timeit
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 tqdm.pandas()

@@ -23,7 +23,7 @@ def test_euclidean():
     # euclidean() doesn't use square root
     numpy_dist = np.linalg.norm(x-y, axis=1)**2
     # assert
-    np.testing.assert_allclose(dist, )
+    np.testing.assert_allclose(dist, numpy_dist)
 
 if __name__ == '__main__':
     pytest.main([__file__])
