@@ -1,0 +1,5 @@
+md5: c2ec1e430158c2fccf3a919e038572f7
+outs:
+- cache: true
+  md5: 3fc4b6796e18796c213d8ddab9c0c517
+  path: vertex.json

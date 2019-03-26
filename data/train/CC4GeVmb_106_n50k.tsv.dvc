@@ -1,0 +1,5 @@
+md5: 54ed0837b4d7aac374fa3b5d1ac09c1b
+outs:
+- cache: true
+  md5: f5aa4519064e6bbc444ac8e2da479831
+  path: CC4GeVmb_106_n50k.tsv
