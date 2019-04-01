@@ -96,5 +96,5 @@ class MetricsCallback(Callback):
         # processing speed
         proc_speed = len(self.x_test) / end_time
         # print metrics
-        print('Efficiency: %.4f - Hits efficiency: %.4f - Processing speed: %.2f tracks/sec' % 
+        print('\nEfficiency: %.4f - Hits efficiency: %.4f - Processing speed: %.2f tracks/sec' % 
             (efficiency, hits_efficiency, proc_speed))
