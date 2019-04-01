@@ -6,7 +6,6 @@ from tensorflow.keras.optimizers import Adam
 
 # tracknet utils
 from tracknet import build_tracknet_model
-from tracknet import build_conv_tracknet_model
 from losses import tracknet_loss
 from metrics import circle_area
 from metrics import point_in_ellipse
@@ -28,7 +27,7 @@ def main(data_path='data/train_dataset.npz', batch_size=512, random_seed=13):
     print("Validation size: %d" % len(data['x_val']))
 
     print("\nCreate and compile TrackNet model")
-    tracknet = build_conv_tracknet_model(data['x_train'].shape[-1])
+    tracknet = build_tracknet_model(data['x_train'].shape[-1])
     # print network summary
     tracknet.summary()
     # compile keras model
