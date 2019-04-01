@@ -64,7 +64,7 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13):
     
 
 @timeit
-def read_train_dataset(dirpath, add_vertex=False, seed_for_vertex_gen=13):
+def read_train_dataset(dirpath, vertex_fname=None, random_seed=13):
     '''Reads data from directory. Directory must have 
     the following structure:
 
@@ -81,9 +81,9 @@ def read_train_dataset(dirpath, add_vertex=False, seed_for_vertex_gen=13):
     train_files = glob(os.path.join(dirpath, '*.tsv'))
 
     vertex_stats = None
-    if add_vertex:
+    if vertex_fname is not None:
         # get vertex statistics
-        vertex_file = os.path.join(dirpath, "vertex.json")
+        vertex_file = os.path.join(dirpath, vertex_fname)
         vertex_stats = read_vertex_file(vertex_file)
 
     # get train data
@@ -95,7 +95,7 @@ def read_train_dataset(dirpath, add_vertex=False, seed_for_vertex_gen=13):
         # extract only true tracks
         df = df[df.track != -1]
         # get true tracks array (N, M, 3)
-        train[i] = get_tracks_with_vertex(df, vertex_stats)
+        train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed)
         length[i] = len(train[i])
 
     # create result array

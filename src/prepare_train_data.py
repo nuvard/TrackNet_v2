@@ -13,7 +13,10 @@ from data_utils import get_dataset
     random_seed=("Random seed", "option", None, int))
 def main(train_dir="data/train/", val_size=0.2, random_seed=13):
     print("Read train data")
-    train_data = read_train_dataset(train_dir, add_vertex=True, seed_for_vertex_gen=random_seed)
+    train_data = read_train_dataset(
+        train_dir, 
+        vertex_fname="fixed_vertex.json", 
+        random_seed=random_seed)
 
     print("\nSplit on train and validation")
     train, validation = train_test_split(
@@ -32,7 +35,7 @@ def main(train_dir="data/train/", val_size=0.2, random_seed=13):
     validation = get_dataset(validation, shuffle=True, random_seed=random_seed)
     
     print("\nSave to the file")
-    np.savez(os.path.join("data", "train_dataset_vertex.npz"),
+    np.savez(os.path.join("data", "train_dataset_fix_vertex.npz"),
              x_train=train[0],
              y_train=train[1],
              x_val=validation[0],
