@@ -37,28 +37,34 @@ def sample_vertices(vertex_stats, n, random_seed=None):
     return np.hstack([vertex_x, vertex_y, vertex_z])
 
 
-def get_tracks_with_vertex(df, vertex_stats, random_seed=13):
+def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13):
     # extract tracks groups
     groupby = df.groupby(['event', 'track'])
-    # sample vertex data
-    vertex = sample_vertices(vertex_stats, groupby.ngroups, random_seed)
-    # create result array
     n_stations = groupby.size().max()
-    # vertex + n_stations 3D hits
-    res = np.zeros((groupby.ngroups, n_stations+1, 3))
-    # fill with vertex data
-    res[:, 0] = vertex
+
+    # create result array
+    res = np.zeros((groupby.ngroups, n_stations, 3))
+
+    if vertex_stats is not None:
+        # sample vertex data
+        vertex = sample_vertices(vertex_stats, groupby.ngroups, random_seed)
+        # vertex + n_stations 3D hits
+        res = np.zeros((groupby.ngroups, n_stations+1, 3))
+        # fill with vertex data
+        res[:, 0] = vertex
+
     # get tracks
     tracks = groupby[['x', 'y', 'z']].progress_apply(pd.Series.tolist)
+    
     # fill result array
     for i, track in enumerate(tqdm(tracks)):
-        res[i, 1:len(track)+1] = np.asarray(track)
+        res[i, -len(track):] = np.asarray(track)
     
     return res
     
 
 @timeit
-def read_train_dataset(dirpath, seed_for_vertex_gen=13):
+def read_train_dataset(dirpath, add_vertex=False, seed_for_vertex_gen=13):
     '''Reads data from directory. Directory must have 
     the following structure:
 
@@ -73,10 +79,12 @@ def read_train_dataset(dirpath, seed_for_vertex_gen=13):
     '''
     # collect files
     train_files = glob(os.path.join(dirpath, '*.tsv'))
-    vertex_file = os.path.join(dirpath, "vertex.json")
 
-    # get vertex statistics
-    vertex_stats = read_vertex_file(vertex_file)
+    vertex_stats = None
+    if add_vertex:
+        # get vertex statistics
+        vertex_file = os.path.join(dirpath, "vertex.json")
+        vertex_stats = read_vertex_file(vertex_file)
 
     # get train data
     length = [None]*len(train_files)
@@ -86,7 +94,7 @@ def read_train_dataset(dirpath, seed_for_vertex_gen=13):
         df = pd.read_csv(f, encoding='utf-8', sep='\t')
         # extract only true tracks
         df = df[df.track != -1]
-        # get true tracks array (N, 7, 3)
+        # get true tracks array (N, M, 3)
         train[i] = get_tracks_with_vertex(df, vertex_stats)
         length[i] = len(train[i])
 

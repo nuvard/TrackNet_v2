@@ -1,9 +1,11 @@
-from keras.callbacks import Callback
-from .data_utils import get_part
 import tensorflow as tf
 import numpy as np
 import math
 import time
+
+from tensorflow.keras.callbacks import Callback
+
+from data_utils import get_part
 
 
 def circle_area(y_true, y_pred):

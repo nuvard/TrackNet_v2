@@ -1,14 +1,16 @@
-from keras.models import Model
-from keras.layers import Input
-from keras.layers import Conv1D
-from keras.layers import GRU
-from keras.layers import Dense
-from keras.layers import Masking
-from keras.layers import Activation
-from keras.layers import TimeDistributed
-from keras.layers import BatchNormalization
-from keras.layers import Concatenate
-from keras.activations import softplus
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Conv1D
+from tensorflow.keras.layers import GRU
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Masking
+from tensorflow.keras.layers import Activation
+from tensorflow.keras.layers import Dropout
+from tensorflow.keras.layers import TimeDistributed
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.layers import GlobalAveragePooling1D
+from tensorflow.keras.layers import Concatenate
+from tensorflow.keras.activations import softplus
 
 
 def build_tracknet_model(n_features):

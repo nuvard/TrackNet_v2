@@ -13,7 +13,7 @@ from data_utils import get_dataset
     random_seed=("Random seed", "option", None, int))
 def main(train_dir="data/train/", val_size=0.2, random_seed=13):
     print("Read train data")
-    train_data = read_train_dataset(train_dir, random_seed)
+    train_data = read_train_dataset(train_dir, add_vertex=True, seed_for_vertex_gen=random_seed)
 
     print("\nSplit on train and validation")
     train, validation = train_test_split(
@@ -23,16 +23,21 @@ def main(train_dir="data/train/", val_size=0.2, random_seed=13):
     print("Train shape: {}".format(train.shape))
     print("Validation shape: {}".format(validation.shape))
 
+    print("\nPrepare data for full validation")
+    tracklens = np.count_nonzero(validation, axis=1)[:, 0]
+    full_val_data = validation[tracklens == validation.shape[1]]
+
     print("\nPrepare data as input to NN")
     train = get_dataset(train, shuffle=True, random_seed=random_seed)
     validation = get_dataset(validation, shuffle=True, random_seed=random_seed)
-
+    
     print("\nSave to the file")
-    np.savez(os.path.join("data", "train_dataset.npz"),
+    np.savez(os.path.join("data", "train_dataset_vertex.npz"),
              x_train=train[0],
              y_train=train[1],
              x_val=validation[0],
-             y_val=validation[1])
+             y_val=validation[1],
+             full_val=full_val_data)
 
 
 if __name__ == "__main__":
