@@ -3,6 +3,7 @@ import numpy as np
 import json
 import os
 
+from collections import defaultdict
 from glob import glob
 from tqdm import tqdm
 tqdm.pandas()
@@ -95,8 +96,12 @@ def read_train_dataset(dirpath, seed_for_vertex_gen=13):
     train_arr = np.empty((N, *train[0].shape[1:]), dtype=np.float32)
 
     # record all to train_arr
+    left_idx = 0
+    right_idx = 0
     while train:
-        train_arr[:length.pop()] = train.pop()
+        right_idx = left_idx + length.pop()
+        train_arr[left_idx:right_idx] = train.pop()
+        left_idx = right_idx
 
     return train_arr
 
@@ -115,8 +120,19 @@ def shuffle_arrays(*args, random_seed=None):
     # create seed for random generator
     rs = np.random.RandomState(seed=random_seed)
     idx = rs.permutation(len(args[0]))
-    args = [x[idx] for x in args]
-    return args
+
+    if len(args) == 1:
+        return args[0][idx]
+    # else
+    return [x[idx] for x in args]
+
+
+def train_test_split(data, test_size=0.3, random_seed=13):
+    # shuffle original array
+    data = shuffle_arrays(data, random_seed=random_seed)
+    # calc split index
+    idx = int(len(data)*test_size)
+    return data[idx:], data[:idx]
 
 
 def get_part(X, n_hits):
@@ -143,56 +159,91 @@ def get_part(X, n_hits):
     return (x_part, target)
 
 
+def split_on_buckets(X, shuffle=False, random_seed=None):
+    '''Data may contains from tracks with varying lengths.
+    To prepare a train dataset in a proper way, we have to 
+    split data on so-called buckets. Each bucket includes 
+    tracks based on their length, as we can't predict the 
+    6'th point of the track with length 4, but we can predict
+    3-d point
+
+    # Arguments
+        X: ndarray with dtype=float32 with shape of size 3
+        random_seed: int, seed for the RandomState
+        shuffle: boolean, whether or not shuffle output dataset
+
+    # Returns
+        dict {n_points: data_idx}, train_data_size
+    '''
+    # create random generator
+    rs = np.random.RandomState(random_seed)
+    # length of each training sample
+    tracklens = np.count_nonzero(X, axis=1)[:, 0]
+    # all existing track lengths
+    utracklen = np.unique(tracklens)
+    # result dictionary
+    buckets = defaultdict(list)
+    # data split by tracks length
+    subbuckets = {x: np.where(tracklens==x)[0] for x in utracklen}
+    # maximum track length
+    maxlen = np.max(utracklen)
+    # approximate size of the each bucket
+    bsize = len(X) // (maxlen-2)
+    # set index
+    k = maxlen
+    # reverse loop until two points
+    for n_points in range(maxlen, 2, -1):
+        # while bucket is not full
+        while len(buckets[n_points]) < bsize:
+            if shuffle:
+                rs.shuffle(subbuckets[k])
+            # if we can't extract all data form subbucket
+            # without bsize overflow
+            if len(buckets[n_points])+len(subbuckets[k]) > bsize:
+                n_extract = bsize - len(buckets[n_points])
+                # extract n_extract samples
+                buckets[n_points].extend(subbuckets[k][:n_extract])
+                # remove them from original subbucket
+                subbuckets[k] = subbuckets[k][n_extract:]
+            else:
+                buckets[n_points].extend(subbuckets[k])
+                # remove all data from the original list
+                subbuckets[k] = []
+                # decrement index
+                k -= 1   
+
+    return buckets, bsize*len(buckets)
+
+
 def get_dataset(X, shuffle=False, random_seed=None):
     '''Creates a dataset to train the tracknet model. 
     The input is cropped tracks and target is the next point in track
 
-    # Arguments:
-        X : ndarray with dtype=float32 with shape of size 3
-        random_seed : int, seed for the RandomState
-        shuffle : boolean, whether or not shuffle output dataset
+    # Arguments
+        X: ndarray with dtype=float32 with shape of size 3
+        random_seed: int, seed for the RandomState
+        shuffle: boolean, whether or not shuffle output dataset
     '''
     # create pseudo random generator 
     rs = np.random.RandomState(seed=random_seed)
     # shuffle input array
-    X = rs.permutation(X)
-    # parts with different number of points
-    n_parts = X.shape[1] - 2
-    # size of each part of dataset
-    # we uniformly split the input array 
-    part_size = len(X) // n_parts 
+    if shuffle:
+        rs.shuffle(X)
+    # split array on buckets with tracks of different length
+    buckets, size = split_on_buckets(X, shuffle=shuffle, random_seed=random_seed)
     # create vars for resulting arrays
-    inputs = np.zeros(shape=(n_parts*part_size, X.shape[1], 4))
-    target = np.zeros(shape=(n_parts*part_size, 2))
+    inputs = np.zeros(shape=(size, X.shape[1], 4))
+    target = np.zeros(shape=(size, 2))
     # create parts
-    for i in range(n_parts):
+    for i, (n_hits, idx) in enumerate(buckets.items()):
+        n_hits -= 1
         # calculate indices
-        i_s = i*part_size       # start index 
-        i_e = (i+1)*part_size   # end index
+        i_s = i*len(idx)       # start index 
+        i_e = (i+1)*len(idx)   # end index
         # create part
-        inputs[i_s:i_e], target[i_s:i_e] = get_part(X[i_s:i_e], n_hits=i+2)
+        inputs[i_s:i_e], target[i_s:i_e] = get_part(X[idx], n_hits=n_hits)
     # shuffle arrays
     if shuffle:
         inputs, target = shuffle_arrays(inputs, target, random_seed=random_seed)
     
     return (inputs, target)
-
-
-def batch_generator(X, batch_size, shuffle=False, random_seed=None):
-    '''Batch generator function
-
-    # Arguments:
-        X : ndarray with dtype=float32 with shape of size 3
-        batch_size : int, the size of the batch
-        random_seed : int, seed for the RandomState
-        shuffle : boolean, whether or not shuffle output dataset
-    '''
-    # transform input sequences into dataset
-    inputs, target = get_dataset(X, shuffle=shuffle, random_seed=random_seed)
-    # generate batches
-    while True:
-        # this loop produces batches
-        for b in range(len(inputs) // batch_size):
-            batch_xs = inputs[b*batch_size : (b+1)*batch_size]
-            batch_ys = target[b*batch_size : (b+1)*batch_size]
-            yield (batch_xs, batch_ys)
