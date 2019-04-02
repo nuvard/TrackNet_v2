@@ -58,7 +58,12 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13):
     
     # fill result array
     for i, track in enumerate(tqdm(tracks)):
-        res[i, -len(track):] = np.asarray(track)
+        if vertex_stats is None:
+            res[i, :len(track)] = np.asarray(track)
+            continue
+        # else
+        res[i, 1:len(track)+1] = np.asarray(track)
+    
     
     return res
     
@@ -186,7 +191,8 @@ def split_on_buckets(X, shuffle=False, random_seed=None):
     # create random generator
     rs = np.random.RandomState(random_seed)
     # length of each training sample
-    tracklens = np.count_nonzero(X, axis=1)[:, 0]
+    # count number of nonzero rows
+    tracklens = np.sum(np.count_nonzero(X, axis=-1) > 0, axis=1)
     # all existing track lengths
     utracklen = np.unique(tracklens)
     # result dictionary

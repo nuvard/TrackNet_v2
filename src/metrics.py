@@ -60,6 +60,7 @@ def point_in_ellipse(y_true, y_pred):
 
 
 class MetricsCallback(Callback):
+    # TODO: tracks with non-fixed length
     def __init__(self, test_data):
         self.x_test = test_data
 

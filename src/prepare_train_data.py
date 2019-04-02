@@ -9,13 +9,17 @@ from data_utils import get_dataset
 
 @plac.annotations(
     train_dir=("Path to the directory with the train data", "option", None, str),
+    fname_to_save=("Name of the file to save results", "option", None, str),
     val_size=("Fraction of the validation subset of data", "option", None, float),
     random_seed=("Random seed", "option", None, int))
-def main(train_dir="data/train/", val_size=0.2, random_seed=13):
+def main(train_dir="data/train/", 
+         fname_to_save="train_dataset_vertex.npz", 
+         val_size=0.2, 
+         random_seed=13):
     print("Read train data")
     train_data = read_train_dataset(
         train_dir, 
-        vertex_fname="fixed_vertex.json", 
+        vertex_fname="vertex.json", 
         random_seed=random_seed)
 
     print("\nSplit on train and validation")
@@ -27,15 +31,15 @@ def main(train_dir="data/train/", val_size=0.2, random_seed=13):
     print("Validation shape: {}".format(validation.shape))
 
     print("\nPrepare data for full validation")
-    tracklens = np.count_nonzero(validation, axis=1)[:, 0]
+    tracklens = np.count_nonzero(validation, axis=1)[:, -1]
     full_val_data = validation[tracklens == validation.shape[1]]
 
     print("\nPrepare data as input to NN")
     train = get_dataset(train, shuffle=True, random_seed=random_seed)
     validation = get_dataset(validation, shuffle=True, random_seed=random_seed)
     
-    print("\nSave to the file")
-    np.savez(os.path.join("data", "train_dataset_fix_vertex.npz"),
+    print("\nSave to the file `%s`" % fname_to_save)
+    np.savez(os.path.join("data", fname_to_save),
              x_train=train[0],
              y_train=train[1],
              x_val=validation[0],
