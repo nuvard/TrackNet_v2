@@ -30,3 +30,13 @@ def tracknet_loss(lambda1 = 0.9, lambda2 = 0.1):
         loss_value = tf.reduce_mean(loss_value, axis=0)
         return loss_value
     return _tracknet_loss
+
+
+def custom_loss(y_true, y_pred):
+    # TODO: lambdas as arguments
+    ellipse_part = 0.9 * ellipse_loss(y_true, y_pred)
+    radius_part = 0.1 * radius_penalize(y_pred) 
+    # summarize
+    loss_value = ellipse_part + radius_part
+    loss_value = tf.reduce_mean(loss_value, axis=0)
+    return loss_value
