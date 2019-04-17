@@ -59,6 +59,34 @@ def point_in_ellipse(y_true, y_pred):
     return tf.less_equal(left_size, 1)
 
 
+def calc_metrics(x, model, tracklen=None):
+    efficiency = 0
+    hits_efficiency = 0
+    x_val = x.copy()
+    
+    if tracklen is None:
+        tracklen = x_val.shape[1]
+        
+    # run from the first station to the last
+    for i in range(2, tracklen):
+        # cut off all track-candidates
+        x_part, target = get_part(x_val, i)
+        # get model's prediction
+        preds = model.predict(x_part, batch_size=2048)
+        # get indices of the tracks, which continuation was found
+        idx = point_in_ellipse_numpy(target, preds)
+        # count number of right predictions
+        hits_efficiency += np.sum(idx) / len(idx)
+        # exclude 
+        x_val = x_val[idx]
+        
+    # count number of track for which we found all points
+    efficiency = len(x_val) / len(x)
+    # recompute the hits_efficiency
+    hits_efficiency /= x_val.shape[1] - 2
+    return efficiency, hits_efficiency
+
+
 class MetricsCallback(Callback):
     # TODO: tracks with non-fixed length
     def __init__(self, test_data):
@@ -70,25 +98,8 @@ class MetricsCallback(Callback):
 
     def on_epoch_end(self, epoch, logs={}):
         start_time = time.time()
-        efficiency = 0
-        hits_efficiency = 0
-        x_val = self.x_test.copy()
-        # run from the first station to the last
-        for i in range(2, x_val.shape[1]):
-            # cut off all track-candidates
-            x_part, target = get_part(x_val, i)
-            # get model's prediction
-            preds = self.model.predict(x_part, batch_size=512)
-            # get indices of the tracks, which continuation was found
-            idx = point_in_ellipse_numpy(target, preds)
-            # count number of right predictions
-            hits_efficiency += np.sum(idx) / len(idx)
-            # exclude 
-            x_val = x_val[idx]
-        # count number of track for which we found all points
-        efficiency = len(x_val) / len(self.x_test)
-        # recompute the hits_efficiency
-        hits_efficiency /= x_val.shape[1] - 2
+        # calculate metrics
+        efficiency, hits_efficiency = calc_metrics(self.x_test, self.model)
         # add metrics to the list
         self.hits_efficiency.append(hits_efficiency)
         self.efficiency.append(efficiency)
