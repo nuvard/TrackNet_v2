@@ -2,9 +2,9 @@ import numpy as np
 import plac
 import os
 
-from data_utils import read_train_dataset
-from data_utils import train_test_split
-from data_utils import get_dataset
+from .data_utils import read_train_dataset
+from .data_utils import train_test_split
+from .data_utils import get_dataset
 
 
 @plac.annotations(
