@@ -5,18 +5,18 @@ import plac
 from tensorflow.keras.optimizers import Adam
 
 # tracknet utils
-from .tracknet import tracknet_builder
-from .losses import tracknet_loss
-from .metrics import circle_area
-from .metrics import point_in_ellipse
-from .metrics import MetricsCallback
+from tracknet import tracknet_builder
+from losses import tracknet_loss
+from metrics import circle_area
+from metrics import point_in_ellipse
+from metrics import MetricsCallback
 
 
 @plac.annotations(
     data_path=("Path to the .npz file with training and validation data", "option", None, str),
     batch_size=("The size of the batch", "option", None, int),
     random_seed=("Seed for the random generator", "option", None, int))
-def main(data_path='data/train_dataset_vertex.npz', batch_size=32, random_seed=13):
+def main(data_path='data/train_dataset_vertex_eq_dist.npz', batch_size=32, random_seed=13):
     # set random seed for reproducible results
     np.random.seed(random_seed)
     tf.set_random_seed(random_seed)

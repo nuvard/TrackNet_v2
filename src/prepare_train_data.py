@@ -1,34 +1,52 @@
 import numpy as np
 import plac
 import os
+import yaml
 
-from .data_utils import read_train_dataset
-from .data_utils import train_test_split
-from .data_utils import get_dataset
+from data_utils import read_train_dataset
+from data_utils import train_test_split
+from data_utils import get_dataset
 
+
+def load_config(config_file):
+    with open(config_file) as f:
+        return yaml.load(f)
 
 @plac.annotations(
-    train_dir=("Path to the directory with the train data", "option", None, str),
-    fname_to_save=("Name of the file to save results", "option", None, str),
-    val_size=("Fraction of the validation subset of data", "option", None, float),
-    random_seed=("Random seed", "option", None, int))
-def main(train_dir="data/train/", 
-         fname_to_save="train_dataset_vertex.npz", 
-         val_size=0.2, 
-         random_seed=13):
+    config_path=("Path to the config file", "option", None, str))
+def main(config_path='configs/prepare_train_data_equal_distribution.yaml',
+         ):
+
+    config = load_config(config_path)
+
+    # reading the config
+    train_dir = config['train_dir']
+    fname_to_save = config['fname_to_save']
+    val_size = config['val_size']
+    random_seed = config['random_seed']
+    debug = config['debug']
+
+    distributions = config['distribution']
+    len3 = distributions['len3']
+    len4 = distributions['len4']
+    len5 = distributions['len5']
+    len6 = distributions['len6']
+
     print("Read train data")
     train_data = read_train_dataset(
         train_dir, 
         vertex_fname="vertex.json", 
-        random_seed=random_seed)
+        random_seed=random_seed,
+        debug=debug,
+        train_split=(len3, len4, len5, len6))
 
     print("\nSplit on train and validation")
     train, validation = train_test_split(
         train_data, 
         test_size=val_size, 
         random_seed=random_seed)
-    print("Train shape: {}".format(train.shape))
-    print("Validation shape: {}".format(validation.shape))
+    print("\nTrain shape: {}".format(train.shape))
+    print("\nValidation shape: {}".format(validation.shape))
 
     print("\nPrepare data for full validation")
     tracklens = np.count_nonzero(validation, axis=1)[:, -1]

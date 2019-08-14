@@ -8,7 +8,7 @@ from glob import glob
 from tqdm import tqdm
 tqdm.pandas()
 
-from .timing import timeit
+from timing import timeit
 
 
 def read_vertex_file(path):
@@ -37,19 +37,32 @@ def sample_vertices(vertex_stats, n, random_seed=None):
     return np.hstack([vertex_x, vertex_y, vertex_z])
 
 
-def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13):
+def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=None):
     # extract tracks groups
+
     groupby = df.groupby(['event', 'track'])
     n_stations = groupby.size().max()
+    n_stations_min = groupby.size().min()
+    bins = None
+
+    # if we are splitting tracks by lengths distributions,
+    # initialize bins with [min_tracks]*n_stations
+    if train_split:
+        is_equal_distr = len(set(train_split)) == 1
+        if not is_equal_distr:
+            assert False and "TODO: custom split"
+        bins = [groupby.size().value_counts().min()] * (n_stations + 1)
+
 
     # create result array
-    res = np.zeros((groupby.ngroups, n_stations, 3))
+    count_of_tracks = (n_stations - n_stations_min + 1) * bins[0] if bins else groupby.ngroups
+    res = np.zeros((count_of_tracks, n_stations, 3))
 
     if vertex_stats is not None:
         # sample vertex data
-        vertex = sample_vertices(vertex_stats, groupby.ngroups, random_seed)
+        vertex = sample_vertices(vertex_stats, count_of_tracks, random_seed)
         # vertex + n_stations 3D hits
-        res = np.zeros((groupby.ngroups, n_stations+1, 3))
+        res = np.zeros((count_of_tracks, n_stations + 1, 3))
         # fill with vertex data
         res[:, 0] = vertex
 
@@ -57,19 +70,33 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13):
     tracks = groupby[['x', 'y', 'z']].progress_apply(pd.Series.tolist)
     
     # fill result array
+    ind = 0
+    if bins:
+        # TODO: shuffle with info about track_id and event_id
+        np.random.RandomState(seed=random_seed).shuffle(tracks.values)
     for i, track in enumerate(tqdm(tracks)):
+        track_len = len(track)
         if vertex_stats is None:
-            res[i, :len(track)] = np.asarray(track)
-            continue
-        # else
-        res[i, 1:len(track)+1] = np.asarray(track)
-    
+            if bins:
+                if bins[track_len] > 0:
+                    res[ind, :track_len] = np.asarray(track)
+                    bins[track_len] -= 1
+                    ind += 1
+            else:
+                res[i, :track_len] = np.asarray(track)
+        elif bins:
+            if bins[track_len] > 0:
+                res[ind, 1:track_len+1] = np.asarray(track)
+                bins[track_len] -= 1
+                ind += 1
+        else:
+            res[i, 1:track_len + 1] = np.asarray(track)
     
     return res
     
 
 @timeit
-def read_train_dataset(dirpath, vertex_fname=None, random_seed=13):
+def read_train_dataset(dirpath, vertex_fname=None, random_seed=13, debug=False, train_split=None):
     '''Reads data from directory. Directory must have 
     the following structure:
 
@@ -99,8 +126,10 @@ def read_train_dataset(dirpath, vertex_fname=None, random_seed=13):
         df = pd.read_csv(f, encoding='utf-8', sep='\t')
         # extract only true tracks
         df = df[df.track != -1]
+        if debug:
+            df = df[:5000]
         # get true tracks array (N, M, 3)
-        train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed)
+        train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed, train_split)
         length[i] = len(train[i])
 
     # create result array

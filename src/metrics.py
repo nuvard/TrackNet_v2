@@ -5,7 +5,7 @@ import time
 
 from tensorflow.keras.callbacks import Callback
 
-from .data_utils import get_part
+from data_utils import get_part
 
 
 def circle_area(y_true, y_pred):
