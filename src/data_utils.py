@@ -8,7 +8,7 @@ from glob import glob
 from tqdm import tqdm
 tqdm.pandas()
 
-from timing import timeit
+from .timing import timeit
 
 
 def read_vertex_file(path):

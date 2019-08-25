@@ -3,9 +3,9 @@ import plac
 import os
 import yaml
 
-from data_utils import read_train_dataset
-from data_utils import train_test_split
-from data_utils import get_dataset
+from .data_utils import read_train_dataset
+from .data_utils import train_test_split
+from .data_utils import get_dataset
 
 
 def load_config(config_file):
@@ -16,7 +16,10 @@ def load_config(config_file):
     config_path=("Path to the config file", "option", None, str))
 def main(config_path='configs/prepare_train_data_equal_distribution_debug.yaml',
          ):
-
+    import sys
+    print(sys.path, '\n', os.environ['PYTHONPATH'])
+    print(os.getcwd())
+    exit()
     config = load_config(config_path)
 
     # reading the config

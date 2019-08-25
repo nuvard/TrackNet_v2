@@ -8,11 +8,11 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 
 # tracknet utils
-from tracknet import tracknet_builder
-from losses import tracknet_loss
-from metrics import circle_area
-from metrics import point_in_ellipse
-from metrics import MetricsCallback
+from .tracknet import tracknet_builder
+from .losses import tracknet_loss
+from .metrics import circle_area
+from .metrics import point_in_ellipse
+from .metrics import MetricsCallback
 
 def load_config(config_file):
     with open(config_file) as f:
