@@ -1,8 +1,8 @@
 # Path to the directory with the train data
-train_dir: /Users/egor/prog/short_tracks/data_debug/train/
+train_dir: data_debug/train/
 
 # Name of the file to save results
-fname_to_save: train_dataset_vertex_eq_dist_debug.npz
+fname_to_save: data_debug/train_dataset_vertex_eq_dist_debug.npz
 
 # Fraction of the validation subset of data
 val_size: 0.2
@@ -11,7 +11,8 @@ val_size: 0.2
 random_seed: 13
 
 # Debug mode
-debug: True
+debug:
+  debug_size: 5000
 
 # distribution of tracks' lengths. Use '-1' for following dataset's initial distribution
 distribution:

@@ -1,8 +1,11 @@
 import tensorflow as tf
 import numpy as np
-import plac 
+import plac
+import yaml
+import os
 
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint
 
 # tracknet utils
 from tracknet import tracknet_builder
@@ -11,12 +14,21 @@ from metrics import circle_area
 from metrics import point_in_ellipse
 from metrics import MetricsCallback
 
+def load_config(config_file):
+    with open(config_file) as f:
+        return yaml.load(f)
+
 
 @plac.annotations(
-    data_path=("Path to the .npz file with training and validation data", "option", None, str),
-    batch_size=("The size of the batch", "option", None, int),
-    random_seed=("Seed for the random generator", "option", None, int))
-def main(data_path='data/train_dataset_vertex_eq_dist.npz', batch_size=32, random_seed=13):
+    config_path=("Path to the config file", "option", None, str))
+
+def main(config_path='configs/train_init.yaml'):
+    config = load_config(config_path)
+    random_seed = config['random_seed']
+    data_path = config['data_path']
+    batch_size = config['batch_size']
+    autosave = config['autosave']
+    epochs = config['epochs']
     # set random seed for reproducible results
     np.random.seed(random_seed)
     tf.set_random_seed(random_seed)
@@ -36,14 +48,29 @@ def main(data_path='data/train_dataset_vertex_eq_dist.npz', batch_size=32, rando
         optimizer=Adam(clipnorm=1.),
         metrics=[point_in_ellipse, circle_area])
 
-    # train the network
     metrics_cb = MetricsCallback(test_data=data['full_val'])
+    callbacks = [metrics_cb]
+
+    if autosave and autosave['enabled']:
+        file_prefix = autosave['file_prefix']
+        directory = autosave['output_dir']
+        from time import gmtime, strftime
+        postfix = strftime("_%Y-%m-%d__%H.%M.%S", gmtime())
+        res_name = directory + postfix
+        if not os.path.exists(res_name):
+            os.makedirs(res_name)
+        metric_monitor = autosave['metric_monitor']
+        filepath = res_name + '/' + file_prefix + "_init-{epoch:02d}-."+ metric_monitor + ".{" + metric_monitor + ":.2f}.hdf5"
+        checkpoint = ModelCheckpoint(filepath, monitor=metric_monitor, verbose=1, save_best_only=True, save_weights_only=False, mode='max')
+        callbacks.append(checkpoint)
+
     print("Training...")
+    # train the network
     history = tracknet.fit(x=data['x_train'],
                            y=data['y_train'],
                            batch_size=batch_size,
-                           epochs=50,
-                           callbacks=[metrics_cb],
+                           epochs=epochs,
+                           callbacks=callbacks,
                            validation_data=(
                                data['x_val'], 
                                data['y_val']))

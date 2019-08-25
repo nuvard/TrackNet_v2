@@ -126,8 +126,8 @@ def read_train_dataset(dirpath, vertex_fname=None, random_seed=13, debug=False, 
         df = pd.read_csv(f, encoding='utf-8', sep='\t')
         # extract only true tracks
         df = df[df.track != -1]
-        if debug:
-            df = df[:5000]
+        if debug and debug['debug_size']:
+            df = df[:debug['debug_size']]
         # get true tracks array (N, M, 3)
         train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed, train_split)
         length[i] = len(train[i])
