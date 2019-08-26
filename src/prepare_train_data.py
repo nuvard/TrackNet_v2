@@ -3,9 +3,9 @@ import plac
 import os
 import yaml
 
-from .data_utils import read_train_dataset
-from .data_utils import train_test_split
-from .data_utils import get_dataset
+from src.data_utils import read_train_dataset
+from src.data_utils import train_test_split
+from src.data_utils import get_dataset
 
 
 def load_config(config_file):
@@ -14,12 +14,8 @@ def load_config(config_file):
 
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
-def main(config_path='configs/prepare_train_data_equal_distribution_debug.yaml',
+def main(config_path='configs/prepare_train_data_only_len3_tracks.yaml',
          ):
-    import sys
-    print(sys.path, '\n', os.environ['PYTHONPATH'])
-    print(os.getcwd())
-    exit()
     config = load_config(config_path)
 
     # reading the config
@@ -45,7 +41,8 @@ def main(config_path='configs/prepare_train_data_equal_distribution_debug.yaml',
 
     print("\nSplit on train and validation")
     train, validation = train_test_split(
-        train_data, 
+        train_data,
+        shuffle=False,
         test_size=val_size, 
         random_seed=random_seed)
     print("\nTrain shape: {}".format(train.shape))
@@ -56,8 +53,8 @@ def main(config_path='configs/prepare_train_data_equal_distribution_debug.yaml',
     full_val_data = validation[tracklens == validation.shape[1]]
 
     print("\nPrepare data as input to NN")
-    train = get_dataset(train, shuffle=True, random_seed=random_seed)
-    validation = get_dataset(validation, shuffle=True, random_seed=random_seed)
+    train = get_dataset(train, shuffle=False, random_seed=random_seed)
+    validation = get_dataset(validation, shuffle=False, random_seed=random_seed)
     
     print("\nSave to the file `%s`" % fname_to_save)
     np.savez(fname_to_save,

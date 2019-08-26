@@ -8,11 +8,11 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 
 # tracknet utils
-from .tracknet import tracknet_builder
-from .losses import tracknet_loss
-from .metrics import circle_area
-from .metrics import point_in_ellipse
-from .metrics import MetricsCallback
+from src.tracknet import tracknet_builder
+from src.losses import tracknet_loss
+from src.metrics import circle_area
+from src.metrics import point_in_ellipse
+from src.metrics import MetricsCallback
 
 def load_config(config_file):
     with open(config_file) as f:
@@ -22,7 +22,7 @@ def load_config(config_file):
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
 
-def main(config_path='configs/train_init.yaml'):
+def main(config_path='configs/train_len3.yaml'):
     config = load_config(config_path)
     random_seed = config['random_seed']
     data_path = config['data_path']

@@ -8,7 +8,7 @@ from glob import glob
 from tqdm import tqdm
 tqdm.pandas()
 
-from .timing import timeit
+from src.timing import timeit
 
 
 def read_vertex_file(path):
@@ -50,12 +50,18 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
     if train_split:
         is_equal_distr = len(set(train_split)) == 1
         if not is_equal_distr:
-            assert False and "TODO: custom split"
-        bins = [groupby.size().value_counts().min()] * (n_stations + 1)
+            # assert False and "TODO: custom split"
+            v_cnts = groupby.size().value_counts()
+            bins = [v_cnts[val] if val >= (n_stations + 1 - len(train_split)) else 0 for val in range(n_stations + 1)]
+            for ind, val in enumerate(range((n_stations + 1 - len(train_split)), n_stations+1)):
+                if train_split[ind] != -1:
+                    bins[val] *= train_split[ind]
+        else:
+            bins = [groupby.size().value_counts().min()] * (n_stations + 1)
 
 
     # create result array
-    count_of_tracks = (n_stations - n_stations_min + 1) * bins[0] if bins else groupby.ngroups
+    count_of_tracks = np.sum(bins) if bins else groupby.ngroups
     res = np.zeros((count_of_tracks, n_stations, 3))
 
     if vertex_stats is not None:
@@ -67,13 +73,13 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
         res[:, 0] = vertex
 
     # get tracks
-    tracks = groupby[['x', 'y', 'z']].progress_apply(pd.Series.tolist)
+    tracks = groupby[['x', 'y', 'z', 'station', 'track', 'event']].progress_apply(pd.Series.tolist)
     
     # fill result array
     ind = 0
-    if bins:
+    #if bins:
         # TODO: shuffle with info about track_id and event_id
-        np.random.RandomState(seed=random_seed).shuffle(tracks.values)
+        #np.random.RandomState(seed=random_seed).shuffle(tracks.values)
     for i, track in enumerate(tqdm(tracks)):
         track_len = len(track)
         if vertex_stats is None:
@@ -86,9 +92,15 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
                 res[i, :track_len] = np.asarray(track)
         elif bins:
             if bins[track_len] > 0:
-                res[ind, 1:track_len+1] = np.asarray(track)
-                bins[track_len] -= 1
-                ind += 1
+                # TODO: drop tracks with other way (may be on preprocessing)
+                nparray = np.asarray(track)
+                if np.all(np.diff(nparray[:, 3]) == 1.) and nparray[:,3][0] == 0.:
+                    res[ind, 1:track_len+1] = nparray[:, :3]
+                    bins[track_len] -= 1
+                    ind += 1
+                else:
+                    print("\n IGNORED event %d track %d" % (track[4], track[5]))
+                    print(track, ';\n=========\n\n')
         else:
             res[i, 1:track_len + 1] = np.asarray(track)
     
@@ -169,12 +181,13 @@ def shuffle_arrays(*args, random_seed=None):
     return [x[idx] for x in args]
 
 
-def train_test_split(data, test_size=0.3, random_seed=13):
+def train_test_split(data, shuffle = False, test_size=0.3, random_seed=13):
     # shuffle original array
-    data = shuffle_arrays(data, random_seed=random_seed)
+    if shuffle:
+        data = shuffle_arrays(data, random_seed=random_seed)
     # calc split index
-    idx = int(len(data)*test_size)
-    return data[idx:], data[:idx]
+    idx = int(len(data)*(1-test_size))
+    return data[:idx], data[idx:]
 
 
 def get_part(X, n_hits):
