@@ -49,15 +49,16 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
     # initialize bins with [min_tracks]*n_stations
     if train_split:
         is_equal_distr = len(set(train_split)) == 1
+        v_cnts = groupby.size().value_counts()
         if not is_equal_distr:
             # assert False and "TODO: custom split"
-            v_cnts = groupby.size().value_counts()
             bins = [v_cnts[val] if val >= (n_stations + 1 - len(train_split)) else 0 for val in range(n_stations + 1)]
             for ind, val in enumerate(range((n_stations + 1 - len(train_split)), n_stations+1)):
                 if train_split[ind] != -1:
                     bins[val] *= train_split[ind]
         else:
-            bins = [groupby.size().value_counts().min()] * (n_stations + 1)
+            min_val = v_cnts.min()
+            bins = [ min_val if station in v_cnts else 0 for station in range(n_stations + 1)]
 
 
     # create result array
@@ -73,13 +74,16 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
         res[:, 0] = vertex
 
     # get tracks
-    tracks = groupby[['x', 'y', 'z', 'station', 'track', 'event']].progress_apply(pd.Series.tolist)
+    tracks = groupby[['x', 'y', 'z', 'station']].progress_apply(pd.Series.tolist)
     
     # fill result array
     ind = 0
+    broken_cnt = [0]*(n_stations + 1)
     #if bins:
         # TODO: shuffle with info about track_id and event_id
         #np.random.RandomState(seed=random_seed).shuffle(tracks.values)
+    if bins:
+        copy_bins = np.copy(bins)
     for i, track in enumerate(tqdm(tracks)):
         track_len = len(track)
         if vertex_stats is None:
@@ -99,11 +103,16 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
                     bins[track_len] -= 1
                     ind += 1
                 else:
-                    print("\n IGNORED event %d track %d" % (track[4], track[5]))
-                    print(track, ';\n=========\n\n')
+                    broken_cnt[track_len] += 1
         else:
             res[i, 1:track_len + 1] = np.asarray(track)
-    
+    if bins:
+        # this space is left in the res because of appearance of broken tracks
+        gap = np.sum(bins)
+        if gap > 0:
+            res = res[:-gap]
+    print("\n Total tracks:", (copy_bins if bins else groupby.size().value_counts()))
+    print(" Total broken tracks:", broken_cnt, '\n')
     return res
     
 
@@ -139,7 +148,7 @@ def read_train_dataset(dirpath, vertex_fname=None, random_seed=13, debug=False, 
         # extract only true tracks
         df = df[df.track != -1]
         if debug and debug['debug_size']:
-            df = df[:debug['debug_size']]
+            df = df[df.event < debug['debug_size']]
         # get true tracks array (N, M, 3)
         train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed, train_split)
         length[i] = len(train[i])
