@@ -14,7 +14,7 @@ def load_config(config_file):
 
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
-def main(config_path='configs/prepare_train_data_default_settings.yaml',
+def main(config_path='configs/prepare_train_data_eq_dist_no_vertex.yaml',
          ):
     config = load_config(config_path)
 
@@ -24,7 +24,7 @@ def main(config_path='configs/prepare_train_data_default_settings.yaml',
     val_size = config['val_size']
     random_seed = config['random_seed']
     debug = config['debug']
-
+    vertex = config['vertex'] if config['vertex'] != 'None' else None
     distributions = config['distribution']
     len3 = distributions['len3']
     len4 = distributions['len4']
@@ -34,7 +34,7 @@ def main(config_path='configs/prepare_train_data_default_settings.yaml',
     print("Read train data")
     train_data = read_train_dataset(
         train_dir, 
-        vertex_fname="vertex.json", 
+        vertex_fname=vertex,
         random_seed=random_seed,
         debug=debug,
         train_split=(len3, len4, len5, len6))

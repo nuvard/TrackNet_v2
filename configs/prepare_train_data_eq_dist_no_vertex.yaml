@@ -2,7 +2,7 @@
 train_dir: data/train/
 
 # Name of the file to save results
-fname_to_save: data/default_trck_brk_drp.npz
+fname_to_save: data/train_dataset_no_vertex_eq_dist.npz
 
 # Fraction of the validation subset of data
 val_size: 0.2
@@ -10,16 +10,16 @@ val_size: 0.2
 # Random seed
 random_seed: 13
 
-vertex: "vertex.json"
-
 # Debug mode
-debug: #False
-  debug_size: 500
+debug: False
+  #debug_size: 500
+
+vertex: None
 
 # distribution of tracks' lengths. Use '-1' for following dataset's initial distribution
 distribution:
-  len3: -1
-  len4: -1
-  len5: -1
-  len6: -1
+  len3: 0.25
+  len4: 0.25
+  len5: 0.25
+  len6: 0.25
 

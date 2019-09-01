@@ -87,23 +87,15 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
         #np.random.RandomState(seed=random_seed).shuffle(tracks.values)
     if bins:
         copy_bins = np.copy(bins)
+    copy_start = 0 if vertex_stats is None else 1
     for i, track in enumerate(tqdm(tracks)):
         track_len = len(track)
-        if vertex_stats is None:
-            assert False and "TODO: ADD THIS"
-            if bins:
-                if bins[track_len] > 0:
-                    res[ind, :track_len] = np.asarray(track)
-                    bins[track_len] -= 1
-                    ind += 1
-            else:
-                res[i, :track_len] = np.asarray(track)
-        elif bins :
+        if bins:
             if bins[track_len] > 0:
                 # TODO: drop tracks with other way (may be on preprocessing)
                 nparray = np.asarray(track)
-                if np.all(np.diff(nparray[:, 3]) == 1.) and nparray[:,3][0] == 0.:
-                    res[ind, 1:track_len+1] = nparray[:, :3]
+                if np.all(np.diff(nparray[:, 3]) == 1.) and nparray[:, 3][0] == 0.:
+                    res[ind, copy_start:track_len + copy_start] = nparray[:, :3]
                     bins[track_len] -= 1
                     ind += 1
                 else:

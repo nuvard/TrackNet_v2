@@ -10,6 +10,8 @@ epochs: 45
 # Batch size
 batch_size: 32
 
+vertex: "vertex.json"
+
 # Debug mode
 debug: False
 
