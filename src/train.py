@@ -22,7 +22,7 @@ def load_config(config_file):
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
 
-def main(config_path='configs/train_len3.yaml'):
+def main(config_path='configs/train_dropped_broken.yaml'):
     config = load_config(config_path)
     random_seed = config['random_seed']
     data_path = config['data_path']

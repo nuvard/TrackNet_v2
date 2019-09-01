@@ -14,7 +14,7 @@ def load_config(config_file):
 
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
-def main(config_path='configs/prepare_train_data_only_len3_tracks.yaml',
+def main(config_path='configs/prepare_train_data_default_settings.yaml',
          ):
     config = load_config(config_path)
 

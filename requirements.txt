@@ -13,6 +13,7 @@ colorama==0.4.1
 configobj==5.0.6
 configparser==3.8.1
 contextlib2==0.5.5
+cycler==0.10.0
 ddt==1.2.1
 decorator==4.4.0
 defusedxml==0.6.0
@@ -48,8 +49,10 @@ jupyter-core==4.5.0
 Keras==2.2.4
 Keras-Applications==1.0.8
 Keras-Preprocessing==1.1.0
+kiwisolver==1.1.0
 Markdown==3.1.1
 MarkupSafe==1.1.1
+matplotlib==3.1.1
 mistune==0.8.4
 more-itertools==7.2.0
 nanotime==0.5.2
@@ -78,10 +81,13 @@ pyasn1==0.4.6
 pyfiglet==0.8.post1
 Pygments==2.4.2
 pyparsing==2.4.2
+pypiwin32==223
 pyrsistent==0.15.4
 pytest==5.0.1
 python-dateutil==2.8.0
 pytz==2019.2
+pywin32==224
+pywinpty==0.5.5
 PyYAML==5.1.2
 pyzmq==18.1.0
 qtconsole==4.5.2
@@ -95,8 +101,8 @@ six==1.12.0
 smmap==0.9.0
 smmap2==2.0.5
 tensorboard==1.14.0
-tensorflow==1.14.0
 tensorflow-estimator==1.14.0
+tensorflow-gpu==1.14.0
 termcolor==1.1.0
 terminado==0.8.2
 testpath==0.4.2
@@ -109,6 +115,7 @@ wcwidth==0.1.7
 webencodings==0.5.1
 Werkzeug==0.15.5
 widgetsnbextension==3.5.1
+win-unicode-console==0.5
 wrapt==1.11.2
 zc.lockfile==2.0
 zipp==0.5.2

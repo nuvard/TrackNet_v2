@@ -58,7 +58,10 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
                     bins[val] *= train_split[ind]
         else:
             min_val = v_cnts.min()
-            bins = [ min_val if station in v_cnts else 0 for station in range(n_stations + 1)]
+            if train_split[0] == -1:
+                bins = [v_cnts[station] if station in v_cnts else 0 for station in range(n_stations + 1)]
+            else:
+                bins = [ min_val if station in v_cnts else 0 for station in range(n_stations + 1)]
 
 
     # create result array
@@ -87,6 +90,7 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
     for i, track in enumerate(tqdm(tracks)):
         track_len = len(track)
         if vertex_stats is None:
+            assert False and "TODO: ADD THIS"
             if bins:
                 if bins[track_len] > 0:
                     res[ind, :track_len] = np.asarray(track)
@@ -94,7 +98,7 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
                     ind += 1
             else:
                 res[i, :track_len] = np.asarray(track)
-        elif bins:
+        elif bins :
             if bins[track_len] > 0:
                 # TODO: drop tracks with other way (may be on preprocessing)
                 nparray = np.asarray(track)
@@ -105,7 +109,13 @@ def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=No
                 else:
                     broken_cnt[track_len] += 1
         else:
-            res[i, 1:track_len + 1] = np.asarray(track)
+            nparray = np.asarray(track)
+            if np.all(np.diff(nparray[:, 3]) == 1.) and nparray[:, 3][0] == 0.:
+                res[ind, 1:track_len + 1] = nparray[:, :3]
+                bins[track_len] -= 1
+                ind += 1
+            else:
+                broken_cnt[track_len] += 1
     if bins:
         # this space is left in the res because of appearance of broken tracks
         gap = np.sum(bins)
