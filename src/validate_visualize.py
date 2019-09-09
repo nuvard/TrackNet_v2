@@ -31,16 +31,16 @@ def load_config(config_file):
 
 
 def dropBroken(df, preserve_fakes = True, drop_full_tracks = False):
-    if preserve_fakes:
+    if not preserve_fakes:
         df = df[df.track != -1]
     ret = df.groupby('track', as_index=False).filter(
         lambda x: np.all(np.diff(x.station.values)) == 1.
-                  and x.station.values[0] == 0.
+                  and x.station.values[0] == 0. or preserve_fakes and x.track.values[0] == -1
         # if preserve_fakes == False, we are leaving only matched events, no fakes
     )
     if drop_full_tracks:
         ret = df.groupby('track', as_index=False).filter(
-        lambda x: x.station.nunique() < 6 )
+        lambda x: x.station.nunique() < 6 or preserve_fakes and x.track.values[0] == -1)
     return ret
 
 def getEvents(config_df, hits_df):
@@ -209,7 +209,9 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
     batch_paths[:, :2] = paths
     batch_ellipses = np.zeros_like(batch_xs)
     batch_xs[:, :2] = seeds
-    MIN_LENGTH = 3 if vertex_stats is None else 4
+    MIN_LENGTH = 4 if vertex_stats is None else 5
+    track_lost = []
+    track_lost_last_ellipse = []
     while st < n_stations:
         y_pred = nn.predict(batch_xs)
         batch_xs_new = []
@@ -229,6 +231,11 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
             ellipses = np.repeat([ellipse], len(next_hits), axis=0)
             mask = point_in_ellipse_numpy(next_hits, ellipses)
             masked_hits = next_hits[mask]
+            if len(masked_hits) == 0:
+                track_ids = single_event_hits.loc[batch_paths[i][:j]].track.values
+                if track_ids[0] != -1 and (track_ids == track_ids[0]).all():
+                    track_lost.append(batch_paths[i])
+                    track_lost_last_ellipse.append((j, ellipse))
             masked_idx = next_hits_idx[mask]
 
             extensions = np.zeros((len(masked_hits), batch_xs.shape[1], 4))
@@ -270,31 +277,45 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
         # remove vertex and z+1
         ret0 = batch_xs[:, 1:, :-1]
 
-    return ret0, batch_paths, short_tracks, short_tracks_idx, short_tracks_ellipses
+    return ret0, batch_paths, short_tracks, short_tracks_idx, short_tracks_ellipses, track_lost, track_lost_last_ellipse
 
 def visualize_3d(config, event_df, withNN = False):
     cfg_vis = config['visualize']
     assert cfg_vis['mode'] == '3d'
 
-    visualizer = Visualizer(event_df)
-
+    visualizer_all_tracks = Visualizer(event_df, 'ALL TRACKS')
+    visualizer_lost_tracks = Visualizer(event_df, 'LOST TRACKS')
+    visualizer_found_tracks = Visualizer(event_df, 'FOUND TRACKS')
+    visualizer_all_tracks.add_coord_planes(config['stations_sizes'])
+    visualizer_lost_tracks.add_coord_planes(config['stations_sizes'])
+    visualizer_found_tracks.add_coord_planes(config['stations_sizes'])
     if withNN:
         event_df_tracks = event_df[event_df.track != -1]
-        batch_tracks_hits, batch_track_idx, short_tracks, short_tracks_idxs, short_track_ellipses = \
-            reconstruct_event(event_df_tracks, get_nn(config['network']), 6, config['z_stations'], config['stations_sizes'])
-        visualizer.init_draw(reco_tracks=short_tracks_idxs)
+        batch_tracks_hits, batch_track_idx, short_tracks, short_tracks_idxs, \
+        short_track_ellipses, lost_tracks, track_lost_last_ellipse = reconstruct_event(event_df, get_nn(config['network']), 6, config['z_stations'], config['stations_sizes'])
+        #visualizer.init_draw(reco_tracks=batch_track_idx)
+        visualizer_lost_tracks.init_draw(reco_tracks=lost_tracks, draw_all_hits=True)
+        for ind, (last_index, ell) in enumerate(track_lost_last_ellipse):
+            visualizer_lost_tracks.add_nn_pred(last_index, lost_tracks[ind][last_index-1], ell[:2], ell[2:])
+
+        visualizer_found_tracks.init_draw(reco_tracks=batch_track_idx)
+        visualizer_all_tracks.init_draw(draw_all_tracks_from_df=True)
+        visualizer_found_tracks.draw(False)
+        visualizer_lost_tracks.draw(False)
+        visualizer_all_tracks.draw(True)
     else:
+        visualizer = Visualizer(event_df, 'ALL TRACKS')
         visualizer.init_draw(draw_all_tracks_from_df=True)
-    visualizer.draw()
+        visualizer.draw()
 
 def main(config_path='configs/visualize_basic.yaml'):
     config = load_config(config_path)
     df = getEvents(config['df'], parseDf(config['df']))
     if config['df']['drop_broken_tracks']:
-        df = dropBroken(df, preserve_fakes=False, drop_full_tracks=True)
+        df = dropBroken(df, preserve_fakes=True, drop_full_tracks=True)
     #reconstruct_event(df, get_nn(config['network']),6, config['z_stations'], config['stations_sizes'])
     if config['visualize']:
-        visualize_3d(config, df, False)
+        visualize_3d(config, df, withNN=True)
 
 
 

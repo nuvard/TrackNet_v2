@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.patches as mpatches
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse, Rectangle
 import matplotlib.cm as cm
 # This import registers the 3D projection, but is otherwise unused.
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
@@ -23,7 +23,7 @@ def revert_types(df):
 
 class Visualizer:
 
-    def __init__(self, df = None):
+    def __init__(self, df = None, title = "EVENT GRAPH"):
         self.__df = df
         self.__axs = []
         self.__color_map = {-1: [[0.1, 0.1, 0.1]]}
@@ -32,9 +32,12 @@ class Visualizer:
         self.__fake_hits = []
         self.__nn_preds = []
         self.__coord_planes = []
-        self.__title = "EVENT GRAPH"
+        self.__draw_all_hits = False
+        self.__draw_all_tracks_from_df = False
+        self.__title = title
 
-    def init_draw(self, reco_tracks = None, draw_all_tracks_from_df = False):
+    def init_draw(self, reco_tracks = None, draw_all_tracks_from_df = False, draw_all_hits = False):
+        self.__draw_all_hits = draw_all_hits
         self.__draw_all_tracks_from_df = draw_all_tracks_from_df
         grouped = self.__df.groupby('track')
         # prepare adjacency list for tracks
@@ -45,15 +48,16 @@ class Visualizer:
             for row in range(1, len(gp.index)):
                 elem = (gp.index[row - 1], gp.index[row], 1)
                 self.__adj_track_list.append(elem)
-        if reco_tracks:
+
+        if reco_tracks is not None:
             for track in reco_tracks:
                 for i in range(0, len(track) - 2):
                     if track[i] == -1 or track[i+1] == -1:
                         break
                     self.__reco_adj_list.append((track[i], track[i + 1], 1))
 
-    def add_nn_pred(self, hit_index_from, pred_X_Y_Station, pred_R1_R2):
-         self.__nn_preds.append([hit_index_from, pred_X_Y_Station, pred_R1_R2])
+    def add_nn_pred(self, z_ell_coord, from_idx, pred_X_Y_Station, pred_R1_R2):
+         self.__nn_preds.append([z_ell_coord,from_idx, pred_X_Y_Station, pred_R1_R2])
 
     def add_coord_planes(self, coord_planes_arr):
         self.__coord_planes = coord_planes_arr
@@ -61,7 +65,7 @@ class Visualizer:
     def set_title(self, title = "EVENT GRAPH"):
         self.__title = title
 
-    def draw(self):
+    def draw(self, show=True):
         matplotlib.rcParams['legend.fontsize'] = 10
         fig = plt.figure(figsize=(8, 6))
         ax = fig.add_subplot(111, projection='3d')
@@ -69,19 +73,38 @@ class Visualizer:
         ax.set_xlabel('Station')
         ax.set_ylabel('X')
         ax.set_zlabel('Y')
-        for fake_hit in self.__fake_hits:
-            ax.scatter(fake_hit[0], fake_hit[1], fake_hit[2], c=self.__color_map[-1], marker='o')
+        legends = {}
+        if self.__draw_all_hits:
+            for fake_hit in self.__fake_hits:
+                ax.scatter(fake_hit[0], fake_hit[1], fake_hit[2], c=self.__color_map[-1], marker='o')
+
         if self.__draw_all_tracks_from_df:
             for adj_val in self.__adj_track_list:
-                self.draw_edge(adj_val, ax)
+                col, lab, tr_id =self.draw_edge(adj_val, ax)
+                if int(tr_id) not in legends:
+                    legends[int(tr_id)] = mpatches.Patch(color=col, label=lab)
 
         for adj_val in self.__reco_adj_list:
-            self.draw_edge(adj_val, ax)
+            col, lab, tr_id = self.draw_edge(adj_val, ax)
+            if int(tr_id) not in legends:
+                legends[int(tr_id)] = mpatches.Patch(color=col, label=lab)
+
 
         for ell_data in self.__nn_preds:
-            ell = Ellipse(xy=ell_data[1], width=ell_data[2][0], height=ell_data[2][1], color='red')
+            ell = Ellipse(xy=ell_data[2], width=ell_data[3][0], height=ell_data[3][1], color='red')
             ax.add_patch(ell)
-            art3d.pathpatch_2d_to_3d(ell, z=ell_data[2], zdir="x")
+            art3d.pathpatch_2d_to_3d(ell, z=ell_data[0], zdir="x")
+            col, lab, tr_id = self.draw_edge_from_idx_to_pnt(ell_data[1], [ell_data[0], ell_data[2][0], ell_data[2][1]], ax)
+            if int(tr_id) not in legends:
+                legends[int(tr_id)] = mpatches.Patch(color=col, label=lab)
+
+        for station_id, coord_planes in enumerate(self.__coord_planes):
+            for rect_data in coord_planes:
+                rect = Rectangle(xy=(rect_data[0]-rect_data[2]/2, rect_data[1]-rect_data[3]/2) , width=rect_data[2], height=rect_data[3], linewidth=1, edgecolor='black',facecolor='none')
+                ax.add_patch(rect)
+                art3d.pathpatch_2d_to_3d(rect, z=station_id, zdir="x")
+
+        fig.legend(handles=list(legends.values()))
         # for single_data, with_edges, with_pnts, title in self.__all_data:
         #     legends = {}
         #     for (fr_p, to_p, dist) in single_data:
@@ -99,7 +122,9 @@ class Visualizer:
         #     fig.legend(handles=list(legends.values()))
 
         plt.draw_all()
-        plt.show()
+        plt.tight_layout()
+        if show:
+            plt.show()
         pass
 
     def draw_edge(self, adj_val, ax):
@@ -111,6 +136,20 @@ class Visualizer:
         ax.plot((hit_from.station, hit_to.station), (hit_from.x, hit_to.x), zs=(hit_from.y, hit_to.y), c=color)
         ax.scatter(hit_from.station, hit_from.x, hit_from.y, c=self.__color_map[int(hit_from.track)], marker=marker_1)
         ax.scatter(hit_to.station, hit_to.x, hit_to.y, c=self.__color_map[int(hit_to.track)], marker=marker_2)
+        return color, label, tr_id
+
+    def draw_edge_from_idx_to_pnt(self, from_idx,
+                                  to_coord_STATXY, ax,
+                                  line_color='orange',
+                                  marker='h',
+                                  pnt_color='yellow'):
+        hit_from = self.__df.loc[from_idx]
+        color = line_color
+        ax.plot((hit_from.station, to_coord_STATXY[0]), (hit_from.x, to_coord_STATXY[1]),
+                zs=(hit_from.y, to_coord_STATXY[2]), c=color)
+        ax.scatter(to_coord_STATXY[0], to_coord_STATXY[1], to_coord_STATXY[2],
+                   c=pnt_color, marker=marker)
+        return line_color, 'test edge', -42
 
     def redraw_all(self):
         pass
