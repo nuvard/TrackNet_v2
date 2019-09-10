@@ -30,16 +30,18 @@ def load_config(config_file):
         return yaml.load(f)
 
 
+def drop(x):
+    return np.all(np.diff(x.station.values) == 1.) and x.station.values[0] == 0.
+
 def dropBroken(df, preserve_fakes = True, drop_full_tracks = False):
     if not preserve_fakes:
         df = df[df.track != -1]
     ret = df.groupby('track', as_index=False).filter(
-        lambda x: np.all(np.diff(x.station.values)) == 1.
-                  and x.station.values[0] == 0. or preserve_fakes and x.track.values[0] == -1
+        lambda x: drop(x) or preserve_fakes and x.track.values[0] == -1
         # if preserve_fakes == False, we are leaving only matched events, no fakes
     )
     if drop_full_tracks:
-        ret = df.groupby('track', as_index=False).filter(
+        ret = ret.groupby('track', as_index=False).filter(
         lambda x: x.station.nunique() < 6 or preserve_fakes and x.track.values[0] == -1)
     return ret
 
@@ -94,13 +96,13 @@ def get_nn(nn_config):
 def get_seeds_with_index_with_vertex(hits, vertex_stats, stations_z):
     # first station hits
     st0_hits = hits[hits.station==0][['x', 'y', 'z']].values
-    vertex = sample_vertices(vertex_stats, n=len(st0_hits))
+    vertex = sample_vertices(vertex_stats, n=1)
     # create seeds
     seeds = np.zeros((len(st0_hits), 2, 4))
     seeds[:, 0, :-1] = vertex
     seeds[:, 1, :-1] = st0_hits
     seeds[:, :2, -1] = stations_z[:2]
-    return seeds, hits[hits.station==0].index.values
+    return seeds, hits[hits.station==0].index.values.reshape(-1, 1)
 
 def get_seeds_with_index(hits, stations_z):
     st0_hits = hits[hits.station==0][['x', 'y', 'z']]
@@ -188,6 +190,7 @@ def is_ellipse_intersects_station(ellipse_params,
 
 def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_sizes, vertex_stats=None):
     st = 1
+    paths_start = 1
     j = 2
     short_tracks = []
     short_tracks_idx = []
@@ -195,6 +198,7 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
     # prepare seeds
     if vertex_stats is None:
         st = 2
+        paths_start = 0
         seeds, paths = get_seeds_with_index(single_event_hits, stations_z)
         batch_shape = (len(seeds), n_stations, 4)
         path_shape = (len(seeds), n_stations)
@@ -206,10 +210,10 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
 
     batch_xs = np.zeros(batch_shape, dtype=np.float32)
     batch_paths = np.full(path_shape, -1)
-    batch_paths[:, :2] = paths
+    batch_paths[:, paths_start:2] = paths
     batch_ellipses = np.zeros_like(batch_xs)
     batch_xs[:, :2] = seeds
-    MIN_LENGTH = 4 if vertex_stats is None else 5
+    MIN_LENGTH = 4 if vertex_stats is None else 3
     track_lost = []
     track_lost_last_ellipse = []
     while st < n_stations:
@@ -232,10 +236,10 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
             mask = point_in_ellipse_numpy(next_hits, ellipses)
             masked_hits = next_hits[mask]
             if len(masked_hits) == 0:
-                track_ids = single_event_hits.loc[batch_paths[i][:j]].track.values
+                track_ids = single_event_hits.loc[batch_paths[i][paths_start:j]].track.values
                 if track_ids[0] != -1 and (track_ids == track_ids[0]).all():
-                    track_lost.append(batch_paths[i])
-                    track_lost_last_ellipse.append((j, ellipse))
+                    track_lost.append(batch_paths[i, paths_start:])
+                    track_lost_last_ellipse.append((j - paths_start, ellipse))
             masked_idx = next_hits_idx[mask]
 
             extensions = np.zeros((len(masked_hits), batch_xs.shape[1], 4))
@@ -266,6 +270,7 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
 
     if len(short_tracks_idx) > 0:
         batch_paths = np.vstack([batch_paths, short_tracks_idx])
+        short_tracks_idx = np.copy(np.array(short_tracks_idx)[:, paths_start:])
 
     if len(short_tracks) > 0:
         batch_xs = np.vstack([batch_xs, short_tracks])
@@ -276,10 +281,11 @@ def reconstruct_event(single_event_hits, nn, n_stations, stations_z, stations_si
     if vertex_stats is not None:
         # remove vertex and z+1
         ret0 = batch_xs[:, 1:, :-1]
+        batch_paths = batch_paths[:, paths_start:]
 
     return ret0, batch_paths, short_tracks, short_tracks_idx, short_tracks_ellipses, track_lost, track_lost_last_ellipse
 
-def visualize_3d(config, event_df, withNN = False):
+def visualize_3d(config, event_df, withNN = False, vertex_stats = None):
     cfg_vis = config['visualize']
     assert cfg_vis['mode'] == '3d'
 
@@ -292,7 +298,8 @@ def visualize_3d(config, event_df, withNN = False):
     if withNN:
         event_df_tracks = event_df[event_df.track != -1]
         batch_tracks_hits, batch_track_idx, short_tracks, short_tracks_idxs, \
-        short_track_ellipses, lost_tracks, track_lost_last_ellipse = reconstruct_event(event_df, get_nn(config['network']), 6, config['z_stations'], config['stations_sizes'])
+        short_track_ellipses, lost_tracks, track_lost_last_ellipse = reconstruct_event(event_df, get_nn(config['network']),
+                                                                                       6, config['z_stations'], config['stations_sizes'], vertex_stats=vertex_stats)
         #visualizer.init_draw(reco_tracks=batch_track_idx)
         visualizer_lost_tracks.init_draw(reco_tracks=lost_tracks, draw_all_hits=True)
         for ind, (last_index, ell) in enumerate(track_lost_last_ellipse):
@@ -308,14 +315,18 @@ def visualize_3d(config, event_df, withNN = False):
         visualizer.init_draw(draw_all_tracks_from_df=True)
         visualizer.draw()
 
-def main(config_path='configs/visualize_basic.yaml'):
+def main(config_path='configs/visualize_basic_with_vertex.yaml'):
     config = load_config(config_path)
     df = getEvents(config['df'], parseDf(config['df']))
     if config['df']['drop_broken_tracks']:
         df = dropBroken(df, preserve_fakes=True, drop_full_tracks=True)
     #reconstruct_event(df, get_nn(config['network']),6, config['z_stations'], config['stations_sizes'])
     if config['visualize']:
-        visualize_3d(config, df, withNN=True)
+        vertex_stats = None
+        if config['with_vertex']:
+            vertex_stats = read_vertex_file(config['with_vertex']['vertex_fname'])
+
+        visualize_3d(config, df, withNN=True, vertex_stats=vertex_stats)
 
 
 

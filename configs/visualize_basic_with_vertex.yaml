@@ -13,7 +13,7 @@ visualize:
   ellipses: True
 
 network: #False
-  network_path: "results/no_vtx_tracknetV2_seed{13}_batch{32}_epoch{27}_loss{1.7983}_acc{0.8842}_circle{3.3569}.h5"
+  network_path: "results/cloud__init-67-.val_point_in_ellipse.0.95.hdf5"
 
 z_stations: [32.85, 65.25, 96.65, 129.35, 161.25, 193.85]
 
@@ -26,5 +26,6 @@ stations_sizes : [
     [[40.8, -6.9, 81.6, 45], [-40.8, -6.9, 81.6, 45]],
     [[40.8, -6.9, 81.6, 45], [-40.8, -6.9, 81.6, 45]]]
 
-with_vertex: False
+with_vertex:
+  vertex_fname: "data/test/vertex.json"
 

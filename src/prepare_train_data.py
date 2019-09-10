@@ -2,6 +2,9 @@ import numpy as np
 import plac
 import os
 import yaml
+import sys
+
+sys.path.append(os.path.realpath('.'))
 
 from src.data_utils import read_train_dataset
 from src.data_utils import train_test_split
@@ -14,7 +17,7 @@ def load_config(config_file):
 
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
-def main(config_path='configs/prepare_train_data_eq_dist_no_vertex.yaml',
+def main(config_path='configs/prepare_train_data_equal_distribution.yaml',
          ):
     config = load_config(config_path)
 

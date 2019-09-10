@@ -140,16 +140,15 @@ class Visualizer:
 
     def draw_edge_from_idx_to_pnt(self, from_idx,
                                   to_coord_STATXY, ax,
-                                  line_color='orange',
+                                  line_color=np.random.rand(3,),
                                   marker='h',
                                   pnt_color='yellow'):
         hit_from = self.__df.loc[from_idx]
-        color = line_color
         ax.plot((hit_from.station, to_coord_STATXY[0]), (hit_from.x, to_coord_STATXY[1]),
-                zs=(hit_from.y, to_coord_STATXY[2]), c=color)
+                zs=(hit_from.y, to_coord_STATXY[2]), c=line_color)
         ax.scatter(to_coord_STATXY[0], to_coord_STATXY[1], to_coord_STATXY[2],
                    c=pnt_color, marker=marker)
-        return line_color, 'test edge', -42
+        return line_color, 'test edge from ev_id:' + str(int(hit_from.track)), int(hit_from.track)
 
     def redraw_all(self):
         pass
