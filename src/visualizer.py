@@ -1,6 +1,8 @@
 import matplotlib
 
-matplotlib.use('Qt5Agg')
+if not 'inline' in matplotlib.get_backend():
+    matplotlib.use('Qt5Agg')
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
