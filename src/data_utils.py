@@ -8,7 +8,7 @@ from glob import glob
 from tqdm import tqdm
 tqdm.pandas()
 
-from .timing import timeit
+from src.timing import timeit
 
 
 def read_vertex_file(path):
@@ -37,39 +37,89 @@ def sample_vertices(vertex_stats, n, random_seed=None):
     return np.hstack([vertex_x, vertex_y, vertex_z])
 
 
-def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13):
+def get_tracks_with_vertex(df, vertex_stats=None, random_seed=13, train_split=None):
     # extract tracks groups
+
     groupby = df.groupby(['event', 'track'])
     n_stations = groupby.size().max()
+    n_stations_min = groupby.size().min()
+    bins = None
+
+    # if we are splitting tracks by lengths distributions,
+    # initialize bins with [min_tracks]*n_stations
+    if train_split:
+        is_equal_distr = len(set(train_split)) == 1
+        v_cnts = groupby.size().value_counts()
+        if not is_equal_distr:
+            # assert False and "TODO: custom split"
+            bins = [v_cnts[val] if val >= (n_stations + 1 - len(train_split)) else 0 for val in range(n_stations + 1)]
+            for ind, val in enumerate(range((n_stations + 1 - len(train_split)), n_stations+1)):
+                if train_split[ind] != -1:
+                    bins[val] *= train_split[ind]
+        else:
+            min_val = v_cnts.min()
+            if train_split[0] == -1:
+                bins = [v_cnts[station] if station in v_cnts else 0 for station in range(n_stations + 1)]
+            else:
+                bins = [ min_val if station in v_cnts else 0 for station in range(n_stations + 1)]
+
 
     # create result array
-    res = np.zeros((groupby.ngroups, n_stations, 3))
+    count_of_tracks = np.sum(bins) if bins else groupby.ngroups
+    res = np.zeros((count_of_tracks, n_stations, 3))
 
     if vertex_stats is not None:
         # sample vertex data
-        vertex = sample_vertices(vertex_stats, groupby.ngroups, random_seed)
+        vertex = sample_vertices(vertex_stats, count_of_tracks, random_seed)
         # vertex + n_stations 3D hits
-        res = np.zeros((groupby.ngroups, n_stations+1, 3))
+        res = np.zeros((count_of_tracks, n_stations + 1, 3))
         # fill with vertex data
         res[:, 0] = vertex
 
     # get tracks
-    tracks = groupby[['x', 'y', 'z']].progress_apply(pd.Series.tolist)
+    tracks = groupby[['x', 'y', 'z', 'station']].progress_apply(pd.Series.tolist)
     
     # fill result array
+    ind = 0
+    broken_cnt = [0]*(n_stations + 1)
+    #if bins:
+        # TODO: shuffle with info about track_id and event_id
+        #np.random.RandomState(seed=random_seed).shuffle(tracks.values)
+    if bins:
+        copy_bins = np.copy(bins)
+    copy_start = 0 if vertex_stats is None else 1
     for i, track in enumerate(tqdm(tracks)):
-        if vertex_stats is None:
-            res[i, :len(track)] = np.asarray(track)
-            continue
-        # else
-        res[i, 1:len(track)+1] = np.asarray(track)
-    
-    
+        track_len = len(track)
+        if bins:
+            if bins[track_len] > 0:
+                # TODO: drop tracks with other way (may be on preprocessing)
+                nparray = np.asarray(track)
+                if np.all(np.diff(nparray[:, 3]) == 1.) and nparray[:, 3][0] == 0.:
+                    res[ind, copy_start:track_len + copy_start] = nparray[:, :3]
+                    bins[track_len] -= 1
+                    ind += 1
+                else:
+                    broken_cnt[track_len] += 1
+        else:
+            nparray = np.asarray(track)
+            if np.all(np.diff(nparray[:, 3]) == 1.) and nparray[:, 3][0] == 0.:
+                res[ind, 1:track_len + 1] = nparray[:, :3]
+                bins[track_len] -= 1
+                ind += 1
+            else:
+                broken_cnt[track_len] += 1
+    if bins:
+        # this space is left in the res because of appearance of broken tracks
+        gap = np.sum(bins)
+        if gap > 0:
+            res = res[:-gap]
+    print("\n Total tracks:", (copy_bins if bins else groupby.size().value_counts()))
+    print(" Total broken tracks:", broken_cnt, '\n')
     return res
     
 
 @timeit
-def read_train_dataset(dirpath, vertex_fname=None, random_seed=13):
+def read_train_dataset(dirpath, vertex_fname=None, random_seed=13, debug=False, train_split=None):
     '''Reads data from directory. Directory must have 
     the following structure:
 
@@ -99,8 +149,10 @@ def read_train_dataset(dirpath, vertex_fname=None, random_seed=13):
         df = pd.read_csv(f, encoding='utf-8', sep='\t')
         # extract only true tracks
         df = df[df.track != -1]
+        if debug and debug['debug_size']:
+            df = df[df.event < debug['debug_size']]
         # get true tracks array (N, M, 3)
-        train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed)
+        train[i] = get_tracks_with_vertex(df, vertex_stats, random_seed, train_split)
         length[i] = len(train[i])
 
     # create result array
@@ -140,12 +192,13 @@ def shuffle_arrays(*args, random_seed=None):
     return [x[idx] for x in args]
 
 
-def train_test_split(data, test_size=0.3, random_seed=13):
+def train_test_split(data, shuffle = False, test_size=0.3, random_seed=13):
     # shuffle original array
-    data = shuffle_arrays(data, random_seed=random_seed)
+    if shuffle:
+        data = shuffle_arrays(data, random_seed=random_seed)
     # calc split index
-    idx = int(len(data)*test_size)
-    return data[idx:], data[:idx]
+    idx = int(len(data)*(1-test_size))
+    return data[:idx], data[idx:]
 
 
 def get_part(X, n_hits):

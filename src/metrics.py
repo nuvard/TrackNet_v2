@@ -5,7 +5,7 @@ import time
 
 from tensorflow.keras.callbacks import Callback
 
-from .data_utils import get_part
+from src.data_utils import get_part
 
 
 def circle_area(y_true, y_pred):
@@ -83,7 +83,8 @@ def calc_metrics(x, model, tracklen=None):
     # count number of track for which we found all points
     efficiency = len(x_val) / len(x)
     # recompute the hits_efficiency
-    hits_efficiency /= x_val.shape[1] - 2
+    # TODO: verify should be "-2" or "- 0"
+    hits_efficiency /= x_val.shape[1] - 0
     return efficiency, hits_efficiency
 
 

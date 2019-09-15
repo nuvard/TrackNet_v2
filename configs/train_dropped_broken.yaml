@@ -1,0 +1,22 @@
+# Path to the data npz file
+data_path: data/broken_tracks_dropped_equal_distribution.npz
+
+# Random seed
+random_seed: 13
+
+# Count of epochs:
+epochs: 45
+
+# Batch size
+batch_size: 32
+
+vertex: "vertex.json"
+
+# Debug mode
+debug: False
+
+autosave:
+  enabled: True
+  output_dir: results
+  file_prefix: result_
+  metric_monitor: val_point_in_ellipse
