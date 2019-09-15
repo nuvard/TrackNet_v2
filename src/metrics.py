@@ -84,7 +84,7 @@ def calc_metrics(x, model, tracklen=None):
     efficiency = len(x_val) / len(x)
     # recompute the hits_efficiency
     # TODO: verify should be "-2" or "- 0"
-    hits_efficiency /= x_val.shape[1] - 0
+    hits_efficiency /= tracklen - 2
     return efficiency, hits_efficiency
 
 
