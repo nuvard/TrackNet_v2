@@ -172,7 +172,8 @@ class Normalize(object):
                '------------------------------------------------------------------------------------------------\n'
 
 class ConstraintsNormalize(object):
-    """Normalizes samples using station characteristics.
+    """Normalizes samples using station given characteristics  or computes them by call.
+    If you need to compute characteristics, you can use MinMaxScale too (maybe better)
     Each station can have its own constraints or global constrains.
       Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
