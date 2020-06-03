@@ -2,7 +2,7 @@ import unittest
 import sys
 import pandas as pd
 sys.path.append('..')
-from src.preprocessing import StandartScale, MinMaxScale, \
+from preprocessing import StandartScale, MinMaxScale, \
     ToPolar, Normalize, DropShort, DropWarps, DropMisses, ToCartesian, \
     Compose, ToBuckets, ConstraintsNormalize
 

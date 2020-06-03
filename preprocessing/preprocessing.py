@@ -6,9 +6,9 @@ from copy import copy
 
 class Compose(object):
     """Composes several transforms together.
-    Args:
+    # Args:
         transforms (list of ``Transform`` objects): list of transforms to compose.
-    Example:
+    # Example:
         >>> Compose([
         >>>     transforms.StandartScale(),
         >>>     transforms.ToPolar(),
@@ -24,6 +24,9 @@ class Compose(object):
         return data
 
     def __repr__(self):
+        """
+        # Returns: formatted strings with class_names, parameters and some statistics for each class
+        """
         format_string = self.__class__.__name__ + '('
         for t in self.transforms:
             format_string += '\n'
@@ -33,7 +36,7 @@ class Compose(object):
 
 class StandartScale(object):
     """Standartizes coordinates by removing the mean and scaling to unit variance
-    Args:
+    # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         with_mean (boolean, True by default): If True, center the data before scaling
         with_std (boolean, True by default): If True, scale the data to unit variance (or equivalently, unit standard deviation).
@@ -53,9 +56,9 @@ class StandartScale(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: transformed dataframe
         """
         assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -78,7 +81,7 @@ class StandartScale(object):
 
 class MinMaxScale(object):
     """Transforms features by scaling each feature to a given range.
-    Args:
+     # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         feature_range (Tuple (min,max), default (0,1)): Desired range of transformed data.
         x_col (str, 'x' by default): X column in data
@@ -88,6 +91,7 @@ class MinMaxScale(object):
 
     def __init__(self, drop_old=True, feature_range=(0, 1), x_col='x', y_col='y', z_col='z'):
         self.drop_old = drop_old
+        assert feature_range[0] < feature_range[1], 'minimum is not smaller value then maximum'
         self.feature_range = feature_range
         self.scaler = MinMaxScaler(feature_range=feature_range)
         self.x_col = x_col
@@ -98,7 +102,7 @@ class MinMaxScale(object):
         """
         Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: transformed dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -123,11 +127,11 @@ class MinMaxScale(object):
                f' Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max__} \n Scale: {self.scaler.scale_} '
 
 class Normalize(object):
-    """TNormalize samples individually to unit norm.
+    """Normalizes samples individually to unit norm.
     Each sample (i.e. each row of the data matrix) with at least one non zero component is rescaled independently of
     other samples so that its norm (l1, l2 or inf) equals one.
 
-    Args:
+      # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         norm (‘l1’, ‘l2’, or ‘max’ (‘l2’ by default)): The norm to use to normalize each non zero sample. If norm=’max’ is used, values will be rescaled by the maximum of the absolute values.
         x_col (str, 'x' by default): X column in data
@@ -145,9 +149,9 @@ class Normalize(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: transformed dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -170,7 +174,7 @@ class Normalize(object):
 class ConstraintsNormalize(object):
     """Normalizes samples using station characteristics.
     Each station can have its own constraints or global constrains.
-    Args:
+      Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         columns (list or tuple of length 3): Columns to scale
         margin (number, positive): margin applied to stations (min = min-margin, max=max+margin)
@@ -178,7 +182,9 @@ class ConstraintsNormalize(object):
         use_global_constraints (boolean, True by default) If True, all data is scaled using given global constraints.
 
     If use_global_constraints is True and constraints is not None, constraints must be {column:(min,max)},
-    else it must be {station: {column:(min,max)}}. Station keys must be in dataset.
+    else it must be {station: {column:(min,max)}}.
+
+    Station keys must be in dataset.
     """
 
     def __init__(self, drop_old=True, columns=['x','y','z'], margin=1e-3, use_global_constraints=True, constraints=None):
@@ -207,9 +213,9 @@ class ConstraintsNormalize(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: transformed dataframe
         """
         if self.constraints is None:
@@ -274,7 +280,7 @@ class ConstraintsNormalize(object):
 
 class DropShort(object):
     """Drops tracks with num of points less then given from data.
-    Args:
+      # Args:
         num_stations (int, default None): Desired number of stations (points). If None, maximum stations number for one track is taken from data.
         keep_misses (bool, default True): If True, points with no tracks are preserved, else they are deleted from data.
         station_column (str, 'station' by default): Event column in data
@@ -293,9 +299,9 @@ class DropShort(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: cleaned dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -330,7 +336,7 @@ class DropShort(object):
 
 class DropWarps(object):
     """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)).
-    Args:
+      # Args:
         keep_misses (bool, default True): If True, points with no tracks are preserved, else they are deleted from data.
         station_column (str, 'station' by default): Event column in data
         track_column (str, 'track' by default): Track column in data
@@ -347,9 +353,9 @@ class DropWarps(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: cleaned dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -389,9 +395,9 @@ class DropMisses(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: cleaned dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -411,14 +417,14 @@ class DropMisses(object):
                f'Number of misses: {self.num_misses_} \n'
 
 class ToPolar(object):
-    """Convertes data to polar coordinates.
-       Formula used: r = sqrt(x^2 + y^2), phi = atan2(y,x)
+    """Convertes data to polar coordinates. Note that cartesian coordinates are used in reversed order!
+       Formula used: r = sqrt(x^2 + y^2), phi = atan2(x,y)
 
-       Args:
+       # Args:
            drop_old (boolean, False by default): If True, old coordinate features are deleted from data
-        x_col (str, 'x' by default): X column in data
-        y_col (str, 'y' by default): Y column in data
-        z_col (str, 'z' by default): Z column in data
+           x_col (str, 'x' by default): X column in data
+           y_col (str, 'y' by default): Y column in data
+           z_col (str, 'z' by default): Z column in data
 
     """
 
@@ -430,9 +436,9 @@ class ToPolar(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
+        # Returns:
             data: transformed dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -458,15 +464,12 @@ class ToPolar(object):
 
 
 class ToCartesian(object):
-    """Resize the input PIL Image to the given size.
-    Args:
-        size (sequence or int): Desired output size. If size is a sequence like
-            (h, w), output size will be matched to this. If size is an int,
-            smaller edge of the image will be matched to this number.
-            i.e, if height > width, then image will be rescaled to
-            (size * height / width, size)
-        interpolation (int, optional): Desired interpolation. Default is
-            ``PIL.Image.BILINEAR``
+    """Converts coordinates to cartesian. Formula is: y = r * cos(phi), x = r * sin(phi).
+    Note that always resulting columns are x,y,z.
+      # Args:
+        drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
+        phi_col (str, 'phi' by default): Phi column in data
+        r_col (str, 'r' by default): R column in data
     """
 
     def __init__(self, drop_old=True, phi_col='phi', r_col='r'):
@@ -477,9 +480,9 @@ class ToCartesian(object):
 
     def __call__(self, data):
         """
-        Args:
+        # Args:
             img (PIL Image): Image to be scaled.
-        Returns:
+        # Returns:
             PIL Image: Rescaled image.
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
@@ -503,15 +506,19 @@ class ToCartesian(object):
                f'X range: {self.x_range_} \nY range: {self.y_range_} \nZ range: {self.z_range_} '
 
 class ToBuckets(object):
-    """Resize the input PIL Image to the given size.
-    Args:
-        size (sequence or int): Desired output size. If size is a sequence like
-            (h, w), output size will be matched to this. If size is an int,
-            smaller edge of the image will be matched to this number.
-            i.e, if height > width, then image will be rescaled to
-            (size * height / width, size)
-        interpolation (int, optional): Desired interpolation. Default is
-            ``PIL.Image.BILINEAR``
+    """Data may contains from tracks with varying lengths.
+    To prepare a train dataset in a proper way, we have to
+    split data on so-called buckets. Each bucket includes
+    tracks based on their length, as we can't predict the
+    6'th point of the track with length 4, but we can predict
+    3-d point
+
+        # Args:
+            X: ndarray with dtype=float32 with shape of size 3
+            random_state: int, seed for the RandomState
+            shuffle: boolean, whether or not shuffle output dataset
+            keep_misses: boolean, True by default. If True,
+                     points without tracks are preserved.
     """
 
     def __init__(self, flat=True, shuffle=False, random_state=42, keep_misses=False):
@@ -523,10 +530,11 @@ class ToBuckets(object):
 
     def __call__(self, df):
         """
-        Args:
+        # Args:
             data: pd.DataFrame to clean up.
-        Returns:
-            data (pd.DataFrame or dict(len:pd.DataFrame): transformed dataframe, if flat is True, returns dataframe with specific column, else dict with bucket dataframes
+        # Returns:
+            data (pd.DataFrame or dict(len:pd.DataFrame): transformed dataframe,
+            if flat is True, returns dataframe with specific column, else dict with bucket dataframes
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
         misses = df.loc[df['track'] == -1, ]
@@ -584,9 +592,17 @@ class ToBuckets(object):
         return res
 
     def get_bucket_index(self):
+        """
+        # Returns: dict(len: indexes) - dict with lens and list of indexes in bucket
+        """
         return self.buckets_
 
     def get_buckets_sizes(self):
+        """
+
+        # Returns:
+            {bucket:len} dict with length of data in bucket
+        """
         return {i: len(j) for i,j in self.buckets_.items()}
 
     def __repr__(self):
