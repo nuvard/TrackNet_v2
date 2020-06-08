@@ -3,7 +3,7 @@ import sys
 import pandas as pd
 sys.path.append('..')
 from preprocessing import StandartScale, MinMaxScale, \
-    ToPolar, Normalize, DropShort, DropWarps, DropMisses, ToCartesian, \
+    ToPolar, Normalize, DropShort, DropSpinningTracks, DropMisses, ToCartesian, \
     Compose, ToBuckets, ConstraintsNormalize
 
 
@@ -145,7 +145,7 @@ class PolarTestCase(unittest.TestCase):
 
     def test_drop_false(self):
         self._init_data()
-        #self.transformer = ToPolar(drop_old=False)
+        #self.transformer = ToCylindrical(drop_old=False)
 
         self._init_transformer(False)
         self.assertEqual(self.transformer.drop_old, False)
@@ -198,8 +198,8 @@ class DropShortTestCase(unittest.TestCase):
         self.assertEqual(self.transformer.num_stations, None)
         self._init_transformer(num_stations=3)
         self.assertEqual(self.transformer.num_stations, 3)
-        self.assertEqual(self.transformer.broken_tracks_, None)
-        self.assertEqual(self.transformer.num_broken_tracks_, None)
+        self.assertEqual(self.transformer._broken_tracks, None)
+        self.assertEqual(self.transformer._num_broken_tracks, None)
 
     def test_transform(self):
         self._init_data()
@@ -242,7 +242,7 @@ class DropShortTestCase(unittest.TestCase):
 
 class DropWarpsTestCase(unittest.TestCase):
     def _init_transformer(self, num_stations=None, keep_misses=True):
-        self.transformer = DropWarps(keep_misses=keep_misses)
+        self.transformer = DropSpinningTracks(keep_misses=keep_misses)
 
     def _init_data(self):
         self.data = pd.read_csv('/home/nastya/tracknet/data/200.csv')
@@ -251,8 +251,8 @@ class DropWarpsTestCase(unittest.TestCase):
     def test_init(self):
         self._init_transformer()
         self._init_data()
-        self.assertEqual(self.transformer.broken_tracks_, None)
-        self.assertEqual(self.transformer.num_broken_tracks_, None)
+        self.assertEqual(self.transformer._broken_tracks, None)
+        self.assertEqual(self.transformer._num_broken_tracks, None)
 
     def test_transform(self):
         self._init_data()
@@ -282,7 +282,7 @@ class DropMissesTestCase(unittest.TestCase):
     def test_init(self):
         self._init_transformer()
         self._init_data()
-        self.assertEqual(self.transformer.num_misses_, None)
+        self.assertEqual(self.transformer._num_misses, None)
 
     def test_transform(self):
         self._init_data()

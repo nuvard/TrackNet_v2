@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, Normalizer
-from tqdm import tqdm
 from copy import copy
 
 class Compose(object):
@@ -11,7 +10,7 @@ class Compose(object):
     # Example:
         >>> Compose([
         >>>     transforms.StandartScale(),
-        >>>     transforms.ToPolar(),
+        >>>     transforms.ToCylindrical(),
         >>> ])
     """
 
@@ -34,44 +33,179 @@ class Compose(object):
         format_string += '\n)'
         return format_string
 
-class StandartScale(object):
+class BaseTransformer(object):
+    """Base class for transforms
+    # Args:
+         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to transform
+         drop_old (boolean, True by default): If True, original data is discarded,
+                                            else preserved in columns with suffix '_old'
+         keep_fakes (boolean, True by default): If True, hits with no track are preserved
+    """
+    def __init__(self, drop_old=False, keep_fakes=True, columns = ['x', 'y', 'z']):
+        self.drop_old = drop_old
+        self.columns = columns
+        self.keep_misses = keep_fakes
+        self.misses = None
+        assert len(columns) == 3, "Columns must be list or tuple of length 3"
+
+    def transform_data(self, data, normed):
+        for i in range(3):
+            if not self.drop_old:
+                 data.loc[:, self.columns[i] + '_old'] = data.loc[self.columns[i]]
+            data.loc[:, self.columns[i]] = normed[i]
+        return data
+
+    def drop_misses(self,data):
+        if self.keep_fakes:
+            self.misses = data.loc[data[self.track_col] == -1, :]
+        return data.loc[data[self.track_col] != -1, :]
+
+    def get_num_misses(self):
+        return len(self.misses)
+
+    def add_misses(self, data):
+        return pd.concat([data, self.misses], axis=0).reset_index()
+
+class BaseScaler(BaseTransformer):
+    """Base class for scalers.
+     # Args:
+         scaler (function or method pd.DataFrame -> iterable of pd.Series): scaler with fit_predict method
+         columns (list or tuple, ['x', 'y', 'z'] by default): Columns to scale
+         drop_old (boolean, True by default): If True, unscaled data is discarded,
+                                            else preserved in columns with suffix '_old'
+    """
+
+    def __init__(self, scaler, drop_old=True, columns=['x', 'y', 'z']):
+        self.columns = columns
+        self.scaler = scaler
+        super().__init__(drop_old, columns)
+
+    def __call__(self, data):
+        """
+        # Args:
+            data (pd.DataFrame):  to clean up.
+        # Returns:
+            data (pd.DataFrame): transformed dataframe
+        """
+        norms = pd.DataFrame(self.scaler.fit_transform(data[[self.columns[0], self.columns[1], self.columns[2]]]))
+        data = super().transform_data(data, norms)
+        return data
+
+    def __repr__(self):
+        return '------------------------------------------------------------------------------------------------\n' + \
+               f'{self.__class__.__name__} with scaler: {self.scaler} \n' + \
+               '------------------------------------------------------------------------------------------------\n'
+
+class BaseFilter(BaseTransformer):
+    """Base class for all filtering transforms
+     # Args:
+         filter_rule (function or method pd.DataFrame -> iterable of pd.Series): Function, which
+                                 convertes data, returned value must be iterable with pd.Series values (list etc)
+         keep_fakes (boolean, True by default): If True, hits with no track are preserved
+         station_col (string, 'station' by default): column with station identifiers
+         event_col (string, 'event' by default): column with event identifiers
+         track_col (string, 'track' by default): column with station identifiers
+    """
+
+    def __init__(self, filter_rule, num_stations=None, keep_fakes=True, station_col='station', track_col='track', event_col='event'):
+        self.num_stations = num_stations
+        self._broken_tracks = None
+        self._num_broken_tracks = None
+        self.keep_misses = keep_fakes
+        self.filter_rule = filter_rule
+        super().__init__(station_col=station_col, track_col=track_col, event_col=event_col, keep_fakes=keep_fakes)
+
+    def __call__(self, data):
+        """
+        # Args:
+            data (pd.DataFrame):  to clean up.
+        # Returns:
+            data (pd.DataFrame): transformed dataframe
+        """
+        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
+        data = super().drop_misses(data, save=True)
+        tracks = data.groupby([self.event_column, self.track_column])
+        if self.num_stations is None:
+            self.num_stations = tracks.size().max()
+        good_tracks = tracks.filter(self.filter_rule)
+        broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
+        self._broken_tracks = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
+        self._num_broken_tracks = len(self._broken_tracks[[self.event_column, self.track_column]].drop_duplicates())
+        good_tracks = super().add_misses(good_tracks)
+        return good_tracks
+
+    def get_broken(self):
+        return self._broken_tracks
+
+    def get_num_broken(self):
+        return self._num_broken_tracks
+
+    def __repr__(self):
+        return '------------------------------------------------------------------------------------------------\n' + \
+               f'{self.__class__.__name__} with filter_rule: {self.filter_rule}\n' + \
+               '------------------------------------------------------------------------------------------------\n'
+
+class BaseCoordConverter(BaseTransformer):
+    """Base class for coordinate convertions
+
+    # Args:
+         convert_function(function or method pd.DataFrame -> iterable of pd.Series): Function, which
+         convertes data, returned value must be iterable with pd.Series values (list etc)
+         drop_old (boolean, False by default): If True, old columns are discarded from data
+         from_columns (list or tuple, ['x', 'y', 'z'] by default): list of original features
+         to_columns (list or tuple, ['r', 'phi'] by default): list of features to convert to
+    """
+    def __init__(self, convert_function, drop_old=False, from_columns=['x', 'y', 'z'], to_columns=['r', 'phi']):
+        self.drop_old = drop_old
+        self.cart_columns = from_columns
+        self.polar_columns = to_columns
+        self.convert_function = convert_function
+        self.range_ = {}
+        super().__init__(drop_old=drop_old, columns=to_columns)
+
+    def __call__(self, data):
+        """
+        # Args:
+            data (pd.DataFrame):  to clean up.
+        # Returns:
+            data (pd.DataFrame): transformed dataframe
+        """
+        # assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
+        self.get_ranges(data, self.from_columns)
+        converted = self.convert_function(data)
+        for i in range(len(self.to_columns)):
+            data.loc[:, self.to_columns[i]] = converted[i]
+        self.get_ranges(data, self.to_columns)
+        if self.drop_old is True:
+            for col in self.from_columns:
+                del data[col]
+        return data
+
+    def get_ranges(self, data, columns):
+        for col in columns:
+            self.range_[col] = (min(data[self.col]), max(data[self.col]))
+    def get_ranges_str(self):
+        return '\n'.join([f'{i}: from {j[0]} to {j[1]}' for i,j in self.range_.items()])
+
+    def __repr__(self):
+        return '------------------------------------------------------------------------------------------------\n' + \
+               f'{self.__class__.__name__} with convert_function: {self.convert_function}\n' + \
+               '------------------------------------------------------------------------------------------------\n'
+
+class StandartScale(BaseScaler):
     """Standartizes coordinates by removing the mean and scaling to unit variance
     # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         with_mean (boolean, True by default): If True, center the data before scaling
         with_std (boolean, True by default): If True, scale the data to unit variance (or equivalently, unit standard deviation).
-        x_col (str, 'x' by default): X column in data
-        y_col (str, 'y' by default): Y column in data
-        z_col (str, 'z' by default): Z column in data
+        columns (list or tuple of length 3): Columns to standartize
     """
 
-    def __init__(self, drop_old=True, with_mean=True, with_std=True, x_col='x', y_col='y', z_col='z'):
-        self.drop_old = drop_old
+    def __init__(self, drop_old=True, with_mean=True, with_std=True, columns = ['x', 'y', 'z']):
         self.with_mean = with_mean
         self.with_std = with_std
         self.scaler = StandardScaler(with_mean, with_std)
-        self.x_col = x_col
-        self.y_col = y_col
-        self.z_col = z_col
-
-    def __call__(self, data):
-        """
-        # Args:
-            data: pd.DataFrame to clean up.
-        # Returns:
-            data: transformed dataframe
-        """
-        assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        norms = pd.DataFrame(self.scaler.fit_transform(data[[self.x_col, self.y_col, self.z_col]]))
-        x_norm = norms[0]
-        y_norm = norms[1]
-        z_norm = norms[2]
-        if self.drop_old is False:
-            data = data.assign(y_old=data.y, x_old=data.x, z_old=data.z)
-            data = data.assign(x=x_norm, y=y_norm, z=z_norm)
-        else:
-            data = data.assign(x=x_norm, y=y_norm, z=z_norm)
-        return data
+        super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
@@ -79,46 +213,19 @@ class StandartScale(object):
                '------------------------------------------------------------------------------------------------\n' + \
                f' Mean: {self.scaler.mean_} \n Var: {self.scaler.var_} \n Scale: {self.scaler.scale_} '
 
-class MinMaxScale(object):
+class MinMaxScale(BaseScaler):
     """Transforms features by scaling each feature to a given range.
      # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
         feature_range (Tuple (min,max), default (0,1)): Desired range of transformed data.
-        x_col (str, 'x' by default): X column in data
-        y_col (str, 'y' by default): Y column in data
-        z_col (str, 'z' by default): Z column in data
+        columns (list or tuple of length 3): Columns to standartize
     """
 
-    def __init__(self, drop_old=True, feature_range=(0, 1), x_col='x', y_col='y', z_col='z'):
-        self.drop_old = drop_old
+    def __init__(self, drop_old=True, feature_range=(0, 1), columns = ['x','y','z']):
         assert feature_range[0] < feature_range[1], 'minimum is not smaller value then maximum'
         self.feature_range = feature_range
         self.scaler = MinMaxScaler(feature_range=feature_range)
-        self.x_col = x_col
-        self.y_col = y_col
-        self.z_col = z_col
-
-    def __call__(self, data):
-        """
-        Args:
-            data: pd.DataFrame to clean up.
-        # Returns:
-            data: transformed dataframe
-        """
-        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        try:
-            norms = pd.DataFrame(self.scaler.fit_transform(data[[self.x_col, self.y_col, self.z_col]]))
-        except IndexError:
-            print(f'Columns {[self.x_col, self.y_col, self.z_col]} are not in the dataframe')
-        x_norm = norms[0]
-        y_norm = norms[1]
-        z_norm = norms[2]
-        if self.drop_old is not True:
-             data = data.assign(y_old=data.y, x_old=data.x, z_old=data.z)
-             data = data.assign(x=x_norm, y=y_norm, z=z_norm)
-        else:
-             data = data.assign(x=x_norm, y=y_norm, z=z_norm)
-        return data
+        super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
@@ -126,52 +233,29 @@ class MinMaxScale(object):
                '------------------------------------------------------------------------------------------------\n' + \
                f' Data min: {self.scaler.data_min_} \n Data max: {self.scaler.data_max__} \n Scale: {self.scaler.scale_} '
 
-class Normalize(object):
+class Normalize(BaseScaler):
     """Normalizes samples individually to unit norm.
     Each sample (i.e. each row of the data matrix) with at least one non zero component is rescaled independently of
     other samples so that its norm (l1, l2 or inf) equals one.
 
       # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
-        norm (‘l1’, ‘l2’, or ‘max’ (‘l2’ by default)): The norm to use to normalize each non zero sample. If norm=’max’ is used, values will be rescaled by the maximum of the absolute values.
-        x_col (str, 'x' by default): X column in data
-        y_col (str, 'y' by default): Y column in data
-        z_col (str, 'z' by default): Z column in data
+        norm (‘l1’, ‘l2’, or ‘max’ (‘l2’ by default)): The norm to use to normalize each non zero sample.
+                              If norm=’max’ is used, values will be rescaled by the maximum of the absolute values.
+        columns (list or tuple of length 3): Columns to standartize
     """
 
-    def __init__(self, drop_old=True, norm='l2', x_col='x', y_col='y', z_col='z'):
-        self.drop_old = drop_old
+    def __init__(self, drop_old=True, norm='l2', columns=['x','y', 'z']):
         self.norm=norm
         self.scaler = Normalizer(norm=norm)
-        self.x_col = x_col
-        self.y_col = y_col
-        self.z_col = z_col
-
-    def __call__(self, data):
-        """
-        # Args:
-            data: pd.DataFrame to clean up.
-        # Returns:
-            data: transformed dataframe
-        """
-        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        norms = pd.DataFrame(self.scaler.fit_transform(data[[self.x_col, self.y_col, self.z_col]]))
-        x_norm = norms[0]
-        y_norm = norms[1]
-        z_norm = norms[2]
-        if self.drop_old is not True:
-             data = data.assign(y_old=data.y, x_old=data.x, z_old=data.z)
-             data = data.assign(x=x_norm, y=y_norm, z=z_norm)
-        else:
-             data = data.assign(x=x_norm, y=y_norm, z=z_norm)
-        return data
+        super().__init__(self.scaler, drop_old, columns)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, norm={self.norm} \n' + \
                '------------------------------------------------------------------------------------------------\n'
 
-class ConstraintsNormalize(object):
+class ConstraintsNormalize(BaseTransformer):
     """Normalizes samples using station given characteristics  or computes them by call.
     If you need to compute characteristics, you can use MinMaxScale too (maybe better)
     Each station can have its own constraints or global constrains.
@@ -189,10 +273,8 @@ class ConstraintsNormalize(object):
     """
 
     def __init__(self, drop_old=True, columns=['x','y','z'], margin=1e-3, use_global_constraints=True, constraints=None):
-        self.drop_old = drop_old
-        assert len(columns)==3, 'Number of columns must be 3'
-        self.columns = columns
         assert margin >0, 'Margin is not positive'
+        self.columns = columns
         self.margin = margin
         self.use_global_constraints = use_global_constraints
         self.constraints = constraints
@@ -208,16 +290,14 @@ class ConstraintsNormalize(object):
                         assert col in constraint.keys(), f'{col} is not in constraint keys for station {key}'
                         assert len(constraint[col]) == 2, f'Not applicable number of constraints for column {col} and station {key}'
                         assert constraint[col][0] < constraints[col][1], f'Minimum is not smaller than maximum for column {col} and station {key}'
-
-
-
+        super().__init__(drop_old=drop_old, columns=columns)
 
     def __call__(self, data):
         """
         # Args:
-            data: pd.DataFrame to clean up.
+            data (pd.DataFrame):  to clean up.
         # Returns:
-            data: transformed dataframe
+            data (pd.DataFrame): transformed dataframe
         """
         if self.constraints is None:
             self.constraints = self.get_stations_constraints(data)
@@ -228,26 +308,14 @@ class ConstraintsNormalize(object):
                 global_max = max([x[col][1] for x in self.constraints.values()])
                 global_constrains[col] = (global_min, global_max)
             x_norm, y_norm, z_norm = self.normalize(data, global_constrains)
-            if self.drop_old is not True:
-                for col in self.columns:
-                    data.loc[:, col + '_old'] = data.loc[:, col]
-            else:
-                pass
-            data.loc[:, self.columns[0]] = x_norm
-            data.loc[:, self.columns[1]] = y_norm
-            data.loc[:, self.columns[2]] = z_norm
+            data = super().transform_data(data, [x_norm, y_norm, z_norm])
         else:
             assert all([station in data['station'].unique() for station in
-                        self.constraints.keys()]) is True, 'Some Station keys in constraints are not presented in data'
-            if self.drop_old is not True:
-                    for col in self.columns:
-                        data.loc[:,col+'_old'] = data.loc[:,col]
+                        self.constraints.keys()]), 'Some Station keys in constraints are not presented in data'
             for station in self.constraints.keys():
                 group = data.loc[data['station'] == station,]
                 x_norm, y_norm, z_norm = self.normalize(group, self.constraints[station])
-                data.loc[data['station'] == station, self.columns[0]] = x_norm
-                data.loc[data['station'] == station, self.columns[1]] = y_norm
-                data.loc[data['station'] == station, self.columns[2]] = z_norm
+                data.loc[data['station'] == station, :] = super().transform_data(group, [x_norm, y_norm, z_norm])
         return data
 
     def get_stations_constraints(self, df):
@@ -279,234 +347,135 @@ class ConstraintsNormalize(object):
                '------------------------------------------------------------------------------------------------\n'+\
              f'constraints are: {self.constraints}'
 
-class DropShort(object):
+class DropShort(BaseFilter):
     """Drops tracks with num of points less then given from data.
       # Args:
         num_stations (int, default None): Desired number of stations (points). If None, maximum stations number for one track is taken from data.
-        keep_misses (bool, default True): If True, points with no tracks are preserved, else they are deleted from data.
+        keep_fakes (bool, default True): If True, points with no tracks are preserved, else they are deleted from data.
         station_column (str, 'station' by default): Event column in data
         track_column (str, 'track' by default): Track column in data
         event_column (str, 'event' by default): Station column in data
     """
-
-    def __init__(self, num_stations=None, keep_misses=True, station_column='station', track_column='track', event_column='event'):
+    def __init__(self, num_stations=0, keep_fakes=True, station_col='station', track_col='track', event_col='event'):
         self.num_stations = num_stations
-        self.keep_misses = bool(keep_misses)
         self.broken_tracks_ = None
         self.num_broken_tracks_ = None
-        self.station_column = station_column
-        self.track_column = track_column
-        self.event_column = event_column
-
-    def __call__(self, data):
-        """
-        # Args:
-            data: pd.DataFrame to clean up.
-        # Returns:
-            data: cleaned dataframe
-        """
-        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        if self.keep_misses is True:
-            misses = data.loc[data[self.track_column] == -1, :]
-
-        data = data.loc[data[self.track_column] != -1, :]
-        tracks = data.groupby([self.event_column, self.track_column])
-        if self.num_stations is None:
-            self.num_stations = tracks.size().max()
-        good_tracks = tracks.filter(lambda x: x.shape[0] >= self.num_stations)
-        broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
-        self.broken_tracks_ = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
-        self.num_broken_tracks_ = len(self.broken_tracks_[[self.event_column, self.track_column]].drop_duplicates())
-
-        if self.keep_misses is True:
-            good_tracks = pd.concat([good_tracks, misses], axis=0).reset_index()
-        return good_tracks
-
-    def get_broken(self):
-        return self.broken_tracks_
-
-    def get_num_broken(self):
-        return self.num_broken_tracks_
+        self.filter = lambda x: x.shape[0] >= self.num_stations
+        super().__init__(self.filter, station_col=station_col, track_col=track_col,
+                         event_col=event_col, keep_fakes=keep_fakes)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, keep_misses={self.keep_misses}, \n' + \
-               f'    track_column={self.track_column}, station_column={self.station_column}, event_column={self.event_column}\n' + \
+               f'{self.__class__.__name__} with parameters: num_stations={self.num_stations}, ' \
+               f'keep_fakes={super().keep_fakes}, \n' + \
+               f'    track_column={super().track_column}, station_column={super().station_column}, ' \
+               f'event_column={super().event_col}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of broken tracks: {self.num_broken_tracks_} \n'
+               f'Number of broken tracks: {super().get_num_broken()} \n'
 
-class DropWarps(object):
+class DropSpinningTracks(BaseFilter):
     """Drops tracks with points on same stations (e.g. (2,2,2) or (1,2,1)).
       # Args:
-        keep_misses (bool, default True): If True, points with no tracks are preserved, else they are deleted from data.
-        station_column (str, 'station' by default): Event column in data
-        track_column (str, 'track' by default): Track column in data
-        event_column (str, 'event' by default): Station column in data
+        keep_fakes (bool, True by default ): If True, points with no tracks are preserved, else they are deleted from data.
+        station_col (str, 'station' by default): Event column in data
+        track_col(str, 'track' by default): Track column in data
+        event_col (str, 'event' by default): Station column in data
     """
 
-    def __init__(self, keep_misses=True, station_column='station', track_column='track', event_column='event'):
-        self.keep_misses = bool(keep_misses)
-        self.broken_tracks_ = None
-        self.num_broken_tracks_ = None
-        self.station_column = station_column
-        self.track_column = track_column
-        self.event_column = event_column
-
-    def __call__(self, data):
-        """
-        # Args:
-            data: pd.DataFrame to clean up.
-        # Returns:
-            data: cleaned dataframe
-        """
-        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        if self.keep_misses is True:
-            misses = data.loc[data[self.track_column] == -1, :]
-        data = data.loc[data[self.track_column] != -1, :]
-        tracks = data.groupby([self.event_column, self.track_column])
-        good_tracks = tracks.filter(lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0])
-        broken = list(data.loc[~data.index.isin(good_tracks.index)].index)
-        self.broken_tracks_ = data.loc[broken, [self.event_column, self.track_column, self.station_column]]
-        self.num_broken_tracks_ = len(self.broken_tracks_[[self.event_column, self.track_column]].drop_duplicates())
-        if self.keep_misses is True:
-            good_tracks = pd.concat([good_tracks, misses], axis=0).reset_index()
-        return good_tracks
-
-    def get_broken(self):
-        return self.broken_tracks_
-
-    def get_num_broken(self):
-        return self.num_broken_tracks_
+    def __init__(self, keep_fakes=True, station_col='station', track_col='track', event_col='event'):
+        self.filter = lambda x: x[self.station_column].unique().shape[0] == x[self.station_column].shape[0]
+        super().__init__(self.filter, station_col=station_col, track_col=track_col, event_col=event_col,
+                         keep_fakes=keep_fakes)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: keep_misses={self.keep_misses},\n    track_column={self.track_column},' + \
-               f'station_column={self.station_column}, event_column={self.event_clumn}\n' + \
+               f'{self.__class__.__name__} with parameters:' + \
+               f'    track_column={super().track_col}, station_column={super().station_col}, event_column={super().event_col}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of warps: {self.num_broken_tracks_} \n'
+               f'Number of broken tracks: {super().get_num_broken()} \n'
 
-class DropMisses(object):
+class DropFakes(BaseTransformer):
     """Drops points without tracks.
     Args:
         track_col (str, 'track' by default): Track column in data
     """
     def __init__(self, track_col='track'):
-        self.num_misses_ = None
+        self._num_misses = None
         self.track_col = track_col
+        super().__init__(track_col=track_col, keep_fakes=False)
 
     def __call__(self, data):
-        """
+        """"
         # Args:
-            data: pd.DataFrame to clean up.
+            data (pd.DataFrame):  to clean up.
         # Returns:
-            data: cleaned dataframe
+            data (pd.DataFrame): transformed dataframe
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-
-        misses = data.loc[data[self.track_col] == -1, :]
-        self.num_misses_ = len(misses)
-        data = data.loc[data[self.track_col] != -1, :].reset_index()
+        data = super().drop_misses(data)
         return data
-
-    def get_num_misses(self):
-        return self.num_misses_
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                f'{self.__class__.__name__} with parameters: track_col={self.track_col}' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'Number of misses: {self.num_misses_} \n'
+               f'Number of misses: {super().get_num_misses()} \n'
 
-class ToPolar(object):
+class ToCylindrical(BaseCoordConverter):
     """Convertes data to polar coordinates. Note that cartesian coordinates are used in reversed order!
        Formula used: r = sqrt(x^2 + y^2), phi = atan2(x,y)
 
        # Args:
            drop_old (boolean, False by default): If True, old coordinate features are deleted from data
-           x_col (str, 'x' by default): X column in data
-           y_col (str, 'y' by default): Y column in data
-           z_col (str, 'z' by default): Z column in data
-
+           cart_columns (list or tuple,  ['x', 'y'] by default ): columns of x and y in cartesian coordiates
+           polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=False, x_col='x', y_col='y', z_col='z'):
+    def __init__(self, drop_old=False, cart_columns=['x', 'y'], polar_columns=['r', 'phi']):
         self.drop_old = drop_old
-        self.x_col = x_col
-        self.y_col = y_col
-        self.z_col = z_col
+        self.from_columns = cart_columns
+        self.to_columns = polar_columns
+        super().__init__(self.convert, drop_old=drop_old, from_columns=cart_columns, to_columns=polar_columns)
 
-    def __call__(self, data):
-        """
-        # Args:
-            data: pd.DataFrame to clean up.
-        # Returns:
-            data: transformed dataframe
-        """
-        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        r = np.sqrt(data[self.x_col] ** 2 + data[self.y_col] ** 2)
-        phi = np.arctan2(data[self.x_col], data[self.y_col])
-        data = data.assign(r=r, phi=phi, z=data[self.z_col])
-
-        self.phi_range_ = (min(data.phi), max(data.phi))
-        self.r_range_ = (min(data.r), max(data.r))
-        self.z_range_ = (min(data.z), max(data.z))
-        data = data.assign(y=data.y, x=data.x)
-        if self.drop_old is True:
-            del data[self.x_col]
-            del data[self.y_col]
-        return data
+    def convert(self, data):
+        r = np.sqrt(data[self.from_columns[0]] ** 2 + data[self.from_columns[1]] ** 2)
+        phi = np.arctan2(data[self.from_columns[0]], data[self.from_columns[1]])
+        return (r, phi)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
                 f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, keep_names={self.keep_names}, ' +\
                 'x_col={self.x_col}, y_col={self.y_col}, z_col={self.z_col}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f' Phi range: {self.phi_range_} \n R range: {self.r_range_} \n Z range: {self.z_range_} '
+               f' Ranges: {super().get_ranges_str()} '
 
-
-class ToCartesian(object):
+class ToCartesian(BaseCoordConverter):
     """Converts coordinates to cartesian. Formula is: y = r * cos(phi), x = r * sin(phi).
     Note that always resulting columns are x,y,z.
       # Args:
         drop_old (boolean, True by default): If True, unscaled features are dropped from dataframe
-        phi_col (str, 'phi' by default): Phi column in data
-        r_col (str, 'r' by default): R column in data
+        cart_columns (list or tuple,  ['x', 'y'] by default ): columns of x and y in cartesian coordiates
+        polar_columns = (list or tuple, ['r','phi'] by default):  columns of r and phi in cylindrical coordiates
     """
 
-    def __init__(self, drop_old=True, phi_col='phi', r_col='r'):
-        self.drop_old = drop_old
-        self.phi_col = phi_col
-        self.r_col = r_col
+    def __init__(self, drop_old=True, cart_columns = ['x', 'y'], polar_columns=['r','phi']):
+        self.from_columns = polar_columns
+        self.to_columns = cart_columns
+        super().__init__(self.convert, drop_old=drop_old, from_columns=self.from_columns, to_columns=self.to_columns)
 
-
-    def __call__(self, data):
-        """
-        # Args:
-            img (PIL Image): Image to be scaled.
-        # Returns:
-            PIL Image: Rescaled image.
-        """
-        #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
+    def convert(self, data):
         y_new = data[self.r_col] * np.cos(data[self.phi_col])
         x_new = data[self.r_col] * np.sin(data[self.phi_col])
-        data = data.assign(x=x_new, y=y_new)
-
-        self.x_range_ = (min(data.x), max(data.x))
-        self.y_range_ = (min(data.y), max(data.y))
-        self.z_range_ = (min(data.z), max(data.z))
-
-        if self.drop_old is True:
-            del data[self.phi_col]
-            del data[self.r_col]
-        return data
+        return (x_new, y_new)
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: drop_old={self.drop_old}, phi_col={self.phi_col}, r_col={self.r_col}\n' + \
+               f'{self.__class__.__name__} with parameters: ' \
+               f'drop_old={self.drop_old}, phi_col={self.to_columns[1]}, r_col={self.to_columns[0]}\n' + \
                '------------------------------------------------------------------------------------------------\n' + \
-               f'X range: {self.x_range_} \nY range: {self.y_range_} \nZ range: {self.z_range_} '
+               f'Ranges:' + super().get_ranges_str()
 
-class ToBuckets(object):
+class ToBuckets(BaseTransformer):
     """Data may contains from tracks with varying lengths.
     To prepare a train dataset in a proper way, we have to
     split data on so-called buckets. Each bucket includes
@@ -515,34 +484,41 @@ class ToBuckets(object):
     3-d point
 
         # Args:
-            X: ndarray with dtype=float32 with shape of size 3
-            random_state: int, seed for the RandomState
-            shuffle: boolean, whether or not shuffle output dataset
-            keep_misses: boolean, True by default. If True,
+            flat (boolean, True by default): If True, converted data is single dataframe
+                            with additional column, else it is dict of dataframes
+            random_state (int, 42 by default): seed for the RandomState
+            shuffle (boolean, False by default): whether or not shuffle output dataset.
+            keep_fakes (boolean, True by default):  . If True,
                      points without tracks are preserved.
+            event_col (string, 'event' by default): Column with event data.
+            track_col (string, 'event' by default): Column with track numbers.
+
     """
 
-    def __init__(self, flat=True, shuffle=False, random_state=42, keep_misses=False):
+    def __init__(self, flat=True, shuffle=False, random_state=42,
+                 keep_fakes=False, event_col='event', track_col='track'):
         self.flat = flat
         self.shuffle = shuffle
         self.random_state = random_state
-        self.keep_misses = keep_misses
+        self.track_col = track_col
+        self.event_col = event_col
+        self.keep_fakes = keep_fakes
+        super().__init__(keep_fakes=keep_fakes, event_col=event_col, track_col=track_col)
+
 
 
     def __call__(self, df):
         """
         # Args:
-            data: pd.DataFrame to clean up.
+            data (pd.DataFrame): data to clean up.
         # Returns:
             data (pd.DataFrame or dict(len:pd.DataFrame): transformed dataframe,
             if flat is True, returns dataframe with specific column, else dict with bucket dataframes
         """
         #assert type(data) == pd.core.frame.DataFrame, "unsupported data format"
-        misses = df.loc[df['track'] == -1, ]
-        df = df.loc[df['track'] != -1, ]
-
+        data = super().drop_misses(df)
         rs = np.random.RandomState(self.random_state)
-        groupby = df.groupby(['event', 'track'])
+        groupby = df.groupby([self.event_col, self.track_col])
         maxlen = groupby.size().max()
         n_stations_min = groupby.size().min()
         subbuckets = {}
@@ -584,12 +560,12 @@ class ToBuckets(object):
             for i, bucket in buckets.items():
                 res.loc[bucket, 'bucket'] = i
             if self.keep_misses:
-                misses.loc[:,'bucket'] = -1
-                res = pd.concat([res, misses], axis=0)
+                super().misses.loc[:, 'bucket'] = -1
+                res = super().add_misses(data)
         else:
             res = {i: df.loc[bucket] for i, bucket in buckets.items()}
-            if self.keep_misses:
-                res[-1] = misses
+            if self.keep_fakes:
+                res[-1] = super().misses
         return res
 
     def get_bucket_index(self):
@@ -608,7 +584,8 @@ class ToBuckets(object):
 
     def __repr__(self):
         return '------------------------------------------------------------------------------------------------\n' + \
-               f'{self.__class__.__name__} with parameters: flat={self.flat}, random_state={self.random_state}, shuffle={self.shuffle}, keep_misses={self.keep_misses}\n' + \
+               f'{self.__class__.__name__} with parameters: flat={self.flat}, ' \
+               f'random_state={self.random_state}, shuffle={self.shuffle}, keep_fakes={self.keep_fakes}\n' + \
                '------------------------------------------------------------------------------------------------\n'
 
 
