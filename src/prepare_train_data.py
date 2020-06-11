@@ -17,7 +17,7 @@ def load_config(config_file):
 
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
-def main(config_path='configs/train_init.yaml',
+def main(config_path='configs/prepare_train_data_equal_distribution_debug.yaml',
          ):
     config = load_config(config_path)
 
@@ -29,10 +29,7 @@ def main(config_path='configs/train_init.yaml',
     debug = config['debug']
     vertex = config['vertex'] if config['vertex'] != 'None' else None
     distributions = config['distribution']
-    len3 = distributions['len3']
-    len4 = distributions['len4']
-    len5 = distributions['len5']
-    len6 = distributions['len6']
+    train_split = [ v for (k, v) in distributions.items()]
 
     print("Read train data")
     train_data = read_train_dataset(
@@ -40,7 +37,7 @@ def main(config_path='configs/train_init.yaml',
         vertex_fname=vertex,
         random_seed=random_seed,
         debug=debug,
-        train_split=(len3, len4, len5, len6))
+        train_split=train_split)
 
     print("\nSplit on train and validation")
     train, validation = train_test_split(

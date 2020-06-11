@@ -1,5 +1,5 @@
 # Path to the directory with the train data
-train_dir: data_debug/train/
+train_dir: data/train/
 
 # Name of the file to save results
 fname_to_save: data_debug/train_dataset_vertex_eq_dist_debug.npz
@@ -10,7 +10,7 @@ val_size: 0.2
 # Random seed
 random_seed: 13
 
-vertex: "vertex.json"
+vertex: None
 
 # Debug mode
 debug:
@@ -19,7 +19,4 @@ debug:
 # distribution of tracks' lengths. Use '-1' for following dataset's initial distribution
 distribution:
   len3: -1
-  len4: 0
-  len5: 0
-  len6: 0
 
