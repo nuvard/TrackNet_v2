@@ -7,4 +7,4 @@ from . import metrics
 from . import tracknet
 from . import timing
 from . import visualizer
-from . import validate_visualize
+#from . import validate_visualize

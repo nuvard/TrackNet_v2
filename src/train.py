@@ -15,7 +15,6 @@ from src.losses import tracknet_loss
 from src.metrics import circle_area
 from src.metrics import point_in_ellipse
 from src.metrics import MetricsCallback
-from preprocessing import Compose, ToCylindrical, StandartScale, DropFakes
 def load_config(config_file):
     with open(config_file) as f:
         return yaml.load(f)
@@ -36,13 +35,8 @@ def main(config_path='configs/train_dropped_broken.yaml'):
     tf.set_random_seed(random_seed)
 
     print("Read data")
-    data = pd.read_csv(data_path)
-    transform = Compose([
-        DropFakes(),
-        StandartScale(),
-        ToCylindrical(),
-        StandartScale()])
-    data = transform(data)
+
+    data = np.load(data_path)
     print("Train size: %d" % len(data['x_train']))
     print("Validation size: %d" % len(data['x_val']))
 

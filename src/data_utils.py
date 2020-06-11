@@ -133,7 +133,7 @@ def read_train_dataset(dirpath, vertex_fname=None, random_seed=13, debug=False, 
     or with corresponding track labels
     '''
     # collect files
-    train_files = glob(os.path.join(dirpath, '*.tsv'))
+    train_files = glob(os.path.join(dirpath, '*.csv'))
 
     vertex_stats = None
     if vertex_fname is not None:
@@ -146,7 +146,7 @@ def read_train_dataset(dirpath, vertex_fname=None, random_seed=13, debug=False, 
     train = [None]*len(train_files)
     for i, f in enumerate(train_files):
         print("Processing `%s` file..." % f)
-        df = pd.read_csv(f, encoding='utf-8', sep='\t')
+        df = pd.read_csv(f, encoding='utf-8', sep=',')
         # extract only true tracks
         df = df[df.track != -1]
         if debug and debug['debug_size']:
