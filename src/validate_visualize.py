@@ -7,7 +7,7 @@ from tqdm import tqdm
 import yaml
 import sys
 
-sys.path.append(os.path.realpath('.'))
+sys.path.append('../..')
 
 from src.losses import custom_loss
 from src.metrics import point_in_ellipse
@@ -27,7 +27,7 @@ tf.keras.backend.set_session(tf.Session(config=config))
 
 def load_config(config_file):
     with open(config_file) as f:
-        return yaml.load(f)
+        return yaml.safe_load(f)
 
 
 def drop(x):
@@ -66,11 +66,11 @@ def getEvents(config_df, hits_df):
     hits = hits_df[hits_df.event.isin(res)]
     return hits
 
-def parseDf(config_df):
+def parseDf(config_df, sep='\t'):
     df_path = config_df['df_path']
     if config_df['read_only_first_lines']:
         nrows = config_df['read_only_first_lines']
-        return pd.read_csv(df_path, encoding='utf-8', sep='\t', nrows=nrows)
+        return pd.read_csv(df_path, encoding='utf-8', sep=sep, nrows=nrows)
     return pd.read_csv(df_path, encoding='utf-8', sep='\t')
 
 def visualize_2d(event_df, withNN = False):
@@ -315,9 +315,9 @@ def visualize_3d(config, event_df, withNN = False, vertex_stats = None):
         visualizer.init_draw(draw_all_tracks_from_df=True)
         visualizer.draw()
 
-def main(config_path='configs/visualize_basic_with_vertex.yaml'):
+def main(config_path='../configs/visualize_basic.yaml'):
     config = load_config(config_path)
-    df = getEvents(config['df'], parseDf(config['df']))
+    df = getEvents(config['df'], parseDf(config['df'], sep=','))
     if config['df']['drop_broken_tracks']:
         df = dropBroken(df, preserve_fakes=True, drop_full_tracks=True)
     #reconstruct_event(df, get_nn(config['network']),6, config['z_stations'], config['stations_sizes'])
@@ -326,7 +326,7 @@ def main(config_path='configs/visualize_basic_with_vertex.yaml'):
         if config['with_vertex']:
             vertex_stats = read_vertex_file(config['with_vertex']['vertex_fname'])
 
-        visualize_3d(config, df, withNN=True, vertex_stats=vertex_stats)
+        visualize_3d(config, df, withNN=False, vertex_stats=vertex_stats)
 
 
 

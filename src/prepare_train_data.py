@@ -17,7 +17,7 @@ def load_config(config_file):
 
 @plac.annotations(
     config_path=("Path to the config file", "option", None, str))
-def main(config_path='configs/prepare_train_data_equal_distribution.yaml',
+def main(config_path='configs/train_init.yaml',
          ):
     config = load_config(config_path)
 

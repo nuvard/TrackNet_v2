@@ -1,5 +1,5 @@
 # Path to the data npz file
-data_path: data/broken_tracks_dropped_equal_distribution.npz
+data_path: data/200.csv
 
 # Random seed
 random_seed: 13
