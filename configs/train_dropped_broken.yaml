@@ -1,0 +1,22 @@
+# Path to the data npz file
+data_path: data/train_dataset_vertex_eq_dist_debug.npz
+
+# Random seed
+random_seed: 13
+
+# Count of epochs:
+epochs: 450
+
+# Batch size
+batch_size: 32
+
+vertex: "vertex.json"
+
+# Debug mode
+debug: False
+
+autosave:
+  enabled: True
+  output_dir: results
+  file_prefix: result_
+  metric_monitor: val_point_in_ellipse

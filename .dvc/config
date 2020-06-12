@@ -1,0 +1,4 @@
+['remote "hydra-storage"']
+url = ssh://pgonchar@hydra.jinr.ru:/nfs/store2.jinr.ru/user/p/pgonchar/dvc-storage/tracknet-v2
+user = pgonchar
+ask_password = true
